@@ -19,7 +19,7 @@ Il plugin non esegue comandi git e non crea cartelle in `.scratch/`: quelle le s
 2. Collega il plugin: `tern plugin link <cartella del plugin>`.
 3. In Tern apri la palette e scegli «AI Workflows: apri».
 
-Le versioni sono in `versioni.txt`.
+Le versioni sono in `versioni.txt`; i prossimi passi in `ROADMAP.md`.
 
 ## Crediti
 

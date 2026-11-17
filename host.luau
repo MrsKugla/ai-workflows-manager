@@ -9,7 +9,7 @@
 local ui = tern.ui
 local Secrets = require("./secrets")
 
-local VERSION = "0.4.0"
+local VERSION = "0.5.1"
 local AGENTS_KEY = "agents"
 local SCAN_EVERY_MS = 3000
 local SHORT_MAX = 40

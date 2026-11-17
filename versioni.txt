@@ -1,3 +1,7 @@
+0.5.1 - [17/11/2026]
+    - Corretta la versione mostrata nella Home: diceva 0.4.0 invece della versione installata (file: host.luau)
+    - Aggiunta ROADMAP.md con i passi fatti e i prossimi, verificati sul codice e sulle skill installate; è l'unica roadmap del progetto e le istruzioni per gli agenti chiedono di tenerla aggiornata
+
 0.5.0 - [17/11/2026]
     - Aggiunto README.md con installazione e crediti alle skill di Matt Pocock (licenza MIT) (file: README.md)
 

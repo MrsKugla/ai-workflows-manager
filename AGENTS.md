@@ -72,3 +72,12 @@ A task is not complete until all of these are true:
 1. `versioni.txt` has a new entry at the top for the new version.
 2. That entry summarizes every user-visible or structural change in the version.
 3. Every version location listed above contains the same version.
+4. `ROADMAP.md`, and `docs/roadmap/data.js` when present, reflect the change.
+
+## Roadmap
+
+`ROADMAP.md` is the single source of truth for done and upcoming work. Update it in the same task whenever a step is completed, added, reordered or dropped.
+
+If `docs/roadmap/data.js` exists (local only, `docs/` is git-ignored), it is the visual view of `ROADMAP.md`: update it in the same task with the `roadmap-viewer` skill, flow B, so both say the same thing. Entries in its `changelog` with `synced: false` are the user's edits from the browser: carry them into `ROADMAP.md` first.
+
+`docs/plugin-tern-skill-flow-fattibilita.html` is the archive of the design decisions: it holds no roadmap.
