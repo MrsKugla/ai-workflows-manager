@@ -1,0 +1,13 @@
+schema = 1
+id = "ai-workflows-manager"
+name = "AI Workflows"
+version = "0.5.0"
+description = "Guida i workflow delle skill di Matt Pocock: situazione, passi, ticket locali, ADR e grill."
+icon = "list-checks"
+host = "host.luau"
+window = "window.luau"
+
+[[blocks]]
+id = "board"
+title = "AI Workflows"
+icon = "list-checks"

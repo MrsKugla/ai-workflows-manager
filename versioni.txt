@@ -1,0 +1,28 @@
+0.5.0 - [17/11/2026]
+    - Aggiunto README.md con installazione e crediti alle skill di Matt Pocock (licenza MIT) (file: README.md)
+
+0.4.0 - [16/11/2026]
+    - Controllo dei segreti (B5): il blocco cerca in .scratch/ e in .ai-workflows/problems.json password e pwd, token, api_key, secret, header Bearer, chiavi private e prefissi ghp_, github_pat_, sk-, AKIA; mostra una fascia rossa «Possibili segreti» con file, riga e valore mascherato, in Home e nel workflow. Non modifica e non blocca nulla (file: secrets.luau, host.luau)
+    - «Apri» apre il file alla riga trovata; «Ignora» segna il falso allarme in .ai-workflows/secrets-ignore.json, che salva file, tipo e un'impronta del valore, mai il valore (file: secrets.luau, host.luau)
+    - Il controllo si ripete a ogni azione nel blocco, al massimo ogni 3 secondi, e con «Aggiorna» (file: host.luau)
+
+0.3.0 - [14/11/2026]
+    - INCOMPATIBILE: i problemi stanno tutti in .ai-workflows/problems.json; i vecchi .scratch/<slug>/problem.json della 0.2.0 non vengono più letti (file: host.luau)
+    - Il plugin non crea più cartelle in .scratch/: la cartella .scratch/<nome breve>/ nasce quando to-spec, to-tickets o wayfinder ci scrivono (file: host.luau)
+    - «Nuovo problema» chiede titolo, nome breve (proposto dal titolo, modificabile) e descrizione; il pulsante matita nel workflow riapre lo stesso modulo. Il nome breve si blocca quando la cartella esiste (file: host.luau)
+    - Il workflow mostra la descrizione, cosa contiene la cartella (spec, mappa, numero di ticket) e i pulsanti «Apri spec» / «Apri mappa» (file: host.luau)
+    - Elimina offre «Solo il problema» o «Problema e cartella» (quest'ultimo solo se la cartella esiste, con il suo contenuto); l'Archivio mostra la cartella di ogni problema (file: host.luau)
+    - Le prime bozze dei prompt includono la descrizione ({brief}) (file: workflows.json)
+    - Corretto «1 passi» in «1 passo» (file: host.luau)
+
+0.2.0 - [14/11/2026]
+    - Home con i problemi attivi, «Nuovo problema», «Configura repo», archivio e aggiornamento (file: host.luau)
+    - Ogni problema è salvato in .scratch/<slug>/problem.json: workflow, passi fatti con data, sessioni collegate, storico dei workflow cambiati (file: host.luau)
+    - Scelta della situazione tra le 11 predefinite; una copia in .ai-workflows/workflows.json del repo le sostituisce (file: workflows.json, host.luau)
+    - Checklist dei passi: la casella segna fatto, il pulsante 📋 copia /skill:<nome> con la bozza del prompt e porta in primo piano il pane omp collegato; sezione «Altre skill» con tutte le 27 skill (file: host.luau)
+    - «Collega» sceglie un omp aperto (prima quelli della stessa cartella) o ne apre uno nuovo nella cartella con tern.com; «Configura repo» prepara l'invocazione di /skill:setup-matt-pocock-skills con tracker e documenti di dominio scelti (file: host.luau)
+    - Archivio con «Ripristina» ed «Elimina» (solo problem.json o tutta la cartella, con conferma) (file: host.luau)
+
+0.1.0 - [13/11/2026]
+    - Scheletro del plugin: blocco «AI Workflows» con cartella di lavoro, elenco degli agenti omp e pulsante che copia /skill:ask-matt negli appunti (file: host.luau)
+    - Comando in palette «AI Workflows: apri»; la parte finestra pubblica gli agenti omp in tern.kv per il blocco (file: window.luau)

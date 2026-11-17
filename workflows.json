@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "situations": [
+    {
+      "id": "piccola",
+      "label": "Funzionalità piccola (una sessione)",
+      "when": "Sai cosa vuoi e il lavoro sta in una sessione. Spec e ticket costano più di quanto rendono.",
+      "human": ["rispondere al grilling", "approvare le interfacce dei test", "valutare i rilievi della review"],
+      "steps": [
+        { "skill": "grill-with-docs", "note": "Interroga l'idea e aggiorna il glossario.", "prompt": "/skill:grill-with-docs {title}{brief}" },
+        { "skill": "implement", "note": "Nella stessa sessione, con tdd a cicli red-green.", "prompt": "/skill:implement quanto abbiamo appena concordato" },
+        { "skill": "code-review", "auto": true, "note": "Gira dentro implement prima del commit: Standards + Spec." },
+        { "skill": "retro", "note": "Facoltativo, utile se qualcosa è andato storto.", "prompt": "/skill:retro" }
+      ]
+    },
+    {
+      "id": "multi",
+      "label": "Funzionalità multi-sessione",
+      "when": "Il lavoro richiede più sessioni: serve una specifica scritta e ticket autosufficienti.",
+      "human": ["decidere durante il grilling", "concordare i punti di test in to-spec", "concordare granularità e dipendenze dei ticket", "valutare la review di ogni ticket"],
+      "steps": [
+        { "skill": "setup-matt-pocock-skills", "note": "Solo se il repo non è ancora configurato: usa «Configura repo»." },
+        { "skill": "grill-with-docs", "note": "Chiarisce le decisioni; aggiorna glossario e ADR.", "prompt": "/skill:grill-with-docs {title}{brief}" },
+        { "skill": "to-spec", "note": "Sintetizza la conversazione in una specifica. Ti chiede quali moduli tocchi.", "prompt": "/skill:to-spec salva in .scratch/{slug}/spec.md" },
+        { "skill": "to-tickets", "note": "Ticket «tracer bullet» con le righe Blocked by:.", "prompt": "/skill:to-tickets da .scratch/{slug}/spec.md", "sep": "/clear: da qui ogni ticket riparte da zero" },
+        { "skill": "implement", "note": "Un ticket per sessione, partendo da quelli non bloccati. tdd e code-review inclusi.", "prompt": "/skill:implement .scratch/{slug}/issues/01-", "sep": "/clear tra un ticket e l'altro" },
+        { "skill": "implement", "label": "implement (ticket successivi)", "note": "Un ticket alla volta, rispettando Blocked by:.", "prompt": "/skill:implement .scratch/{slug}/issues/" },
+        { "skill": "retro", "note": "Nella sessione da analizzare, prima del /clear.", "prompt": "/skill:retro" }
+      ]
+    },
+    {
+      "id": "parallelo",
+      "label": "Tutta la spec in parallelo",
+      "when": "I ticket sono pronti e preferisci orchestrare invece di guidare ogni ticket.",
+      "human": ["controllare il grafo delle dipendenze", "valutare la review finale sul branch di integrazione"],
+      "steps": [
+        { "skill": "grill-with-docs", "note": "Come nel percorso multi-sessione.", "prompt": "/skill:grill-with-docs {title}{brief}" },
+        { "skill": "to-spec", "note": "Specifica nella cartella del problema.", "prompt": "/skill:to-spec salva in .scratch/{slug}/spec.md" },
+        { "skill": "to-tickets", "note": "Ticket con le dipendenze.", "prompt": "/skill:to-tickets da .scratch/{slug}/spec.md", "sep": "/clear" },
+        { "skill": "implement-spec", "note": "Subagent sui ticket pronti, su un unico branch di integrazione. Ogni implementatore usa tdd.", "prompt": "/skill:implement-spec .scratch/{slug}/spec.md" },
+        { "skill": "code-review", "auto": true, "note": "Una sola review su tutto il branch di integrazione." },
+        { "skill": "pr", "auto": true, "note": "L'agente la usa da solo quando scrive la PR." }
+      ]
+    },
+    {
+      "id": "wayfinder",
+      "label": "Iniziativa enorme e incerta",
+      "when": "Puoi nominare la destinazione ma non vedi la strada, e non sta in una sessione. Non usarlo per funzionalità ben definite.",
+      "human": ["fissare la destinazione prima di ogni ticket", "rispondere di persona ai ticket HITL", "scegliere tu tra le varianti dei prototipi"],
+      "warn": "Problema più segnalato: l'agente inizia a scrivere codice di produzione dentro la mappa. Tieni l'implementazione in sessioni separate.",
+      "steps": [
+        { "skill": "wayfinder", "note": "Crea la mappa di ticket-decisione. Una sessione risolve un ticket, aggiorna la mappa e si ferma.", "prompt": "/skill:wayfinder Destinazione: {title}{brief}. Mappa in .scratch/{slug}/map.md" },
+        { "skill": "wayfinder", "label": "wayfinder (sessioni successive)", "note": "Prende un ticket dalla frontiera (aperto, non bloccato) e lo risolve.", "prompt": "/skill:wayfinder prossimo ticket di .scratch/{slug}/map.md", "sep": "quando la mappa è chiara; nessun codice scritto finora" },
+        { "skill": "to-spec", "note": "Condensa le decisioni della mappa in una specifica.", "prompt": "/skill:to-spec dalle decisioni di .scratch/{slug}/map.md" },
+        { "skill": "to-tickets", "note": "Flusso principale normale.", "prompt": "/skill:to-tickets da .scratch/{slug}/spec.md", "sep": "/clear" },
+        { "skill": "implement", "note": "Un ticket per sessione.", "prompt": "/skill:implement .scratch/{slug}/issues/01-" }
+      ]
+    },
+    {
+      "id": "triage",
+      "label": "Issue in arrivo da altri",
+      "when": "Segnalazioni o richieste che non hai creato tu. Non usarlo sui ticket di to-tickets: sono già pronti.",
+      "human": ["approvare categoria e stato proposti", "rispondere al grilling se manca qualcosa"],
+      "steps": [
+        { "skill": "setup-matt-pocock-skills", "note": "Etichette di triage configurate: usa «Configura repo»." },
+        { "skill": "triage", "note": "Riproduce, controlla duplicati e .out-of-scope/, propone e aspetta. Con ready-for-agent allega un brief.", "prompt": "/skill:triage mostrami cosa richiede la mia attenzione" },
+        { "skill": "implement", "note": "Prende le issue ready-for-agent come un ticket.", "prompt": "/skill:implement " }
+      ]
+    },
+    {
+      "id": "rotto",
+      "label": "Qualcosa è rotto",
+      "when": "Un bug ostinato, intermittente, o una regressione tra due stati funzionanti.",
+      "human": ["confermare il comando che riproduce il bug", "valutare la correzione"],
+      "steps": [
+        { "skill": "diagnosing-bugs", "note": "Niente teorie finché un comando non fallisce su questo bug. Poi minimizza, ipotesi, fix, test di regressione.", "prompt": "/skill:diagnosing-bugs {title}{brief}" },
+        { "skill": "retro", "note": "Nella stessa sessione: cosa avrebbe evitato il bug?", "prompt": "/skill:retro" },
+        { "skill": "improve-codebase-architecture", "note": "Se manca un punto in cui bloccare il bug con un test.", "prompt": "/skill:improve-codebase-architecture" }
+      ]
+    },
+    {
+      "id": "prototipo",
+      "label": "Serve codice per decidere",
+      "when": "Una domanda che a parole non si chiude: modello di stato, logica, una UI da vedere.",
+      "human": ["scegliere tra le varianti", "riportare quanto appreso nel thread originale"],
+      "steps": [
+        { "skill": "handoff", "note": "Esporta il contesto: il prototipo vive in un'altra cartella.", "prompt": "/skill:handoff per prototipare: {title}" },
+        { "skill": "prototype", "note": "HTML unico o più varianti UI; conservato su un branch prototype/<nome>.", "prompt": "/skill:prototype {title}{brief}" },
+        { "skill": "handoff", "label": "handoff (ritorno)", "note": "Riporta quanto appreso.", "prompt": "/skill:handoff riporta quanto appreso dal prototipo" },
+        { "skill": "grill-with-docs", "note": "Riprendi il thread dell'idea con il risultato.", "prompt": "/skill:grill-with-docs riprendo {title} con il risultato del prototipo" }
+      ]
+    },
+    {
+      "id": "manutenzione",
+      "label": "Manutenzione del codice",
+      "when": "Hai un momento libero; Matt consiglia di farlo ogni pochi giorni. È un'indagine, non un salvataggio.",
+      "human": ["scegliere quale opportunità approfondire"],
+      "steps": [
+        { "skill": "improve-codebase-architecture", "note": "Cerca moduli da approfondire, report HTML, poi grilling su quello che scegli.", "prompt": "/skill:improve-codebase-architecture" },
+        { "skill": "grill-with-docs", "note": "L'opportunità scelta rientra nel flusso principale come idea.", "prompt": "/skill:grill-with-docs " }
+      ]
+    },
+    {
+      "id": "collega",
+      "label": "Mi serve la risposta di un collega",
+      "when": "Ciò che ti blocca è nella testa di qualcun altro.",
+      "human": ["dire a chi va e cosa ti serve indietro"],
+      "steps": [
+        { "skill": "to-questionnaire", "note": "Ti interroga sull'invio (destinatario, informazioni), non sull'argomento.", "prompt": "/skill:to-questionnaire per <destinatario> su {title}{brief}" },
+        { "skill": "grill-with-docs", "label": "grill-with-docs o to-spec", "note": "Le risposte diventano materiale per il flusso.", "prompt": "/skill:grill-with-docs ecco le risposte su {title}: " }
+      ]
+    },
+    {
+      "id": "fuori-repo",
+      "label": "Fuori da un repository",
+      "when": "Un piano, un design, un testo: nessuna cartella di lavoro.",
+      "human": ["rispondere alle domande"],
+      "steps": [
+        { "skill": "grill-me", "note": "Stessa intervista di grill-with-docs, senza salvare nulla.", "prompt": "/skill:grill-me {title}{brief}" }
+      ]
+    },
+    {
+      "id": "non-so",
+      "label": "Non so da dove partire",
+      "when": "Non sai quale skill o percorso usare.",
+      "human": ["digitare tu la skill suggerita"],
+      "warn": "Può dire che metà delle skill non sono installate: digita comunque il comando suggerito.",
+      "steps": [
+        { "skill": "ask-matt", "note": "Ti colloca su un percorso, dice dove intervieni e dove pulire il contesto, poi si ferma.", "prompt": "/skill:ask-matt {title}{brief}" }
+      ]
+    }
+  ],
+  "skills": [
+    { "name": "setup-matt-pocock-skills", "desc": "Configura tracker, etichette e documenti di dominio. Una volta per repo." },
+    { "name": "ask-matt", "desc": "Ti dice quale skill o percorso usare, poi si ferma." },
+    { "name": "grill-with-docs", "desc": "Grilling che aggiorna GLOSSARY.md e gli ADR." },
+    { "name": "to-spec", "desc": "Trasforma la conversazione in una specifica." },
+    { "name": "to-tickets", "desc": "Divide la specifica in ticket con le dipendenze." },
+    { "name": "implement", "desc": "Lavora un ticket con tdd e chiude con code-review." },
+    { "name": "implement-spec", "desc": "Tutta la spec su un branch di integrazione, con subagent in parallelo." },
+    { "name": "wayfinder", "desc": "Mappa di ticket-decisione per lavori più grandi di una sessione." },
+    { "name": "retro", "desc": "Propone miglioramenti all'ambiente dell'agente dopo una sessione." },
+    { "name": "improve-codebase-architecture", "desc": "Cerca moduli da approfondire, poi grilling sull'opzione scelta." },
+    { "name": "triage", "desc": "Porta le issue in arrivo fino a un brief per l'agente." },
+    { "name": "tdd", "desc": "Red-green, una fetta verticale alla volta.", "auto": true },
+    { "name": "code-review", "desc": "Review Standards + Spec in subagent paralleli.", "auto": true },
+    { "name": "diagnosing-bugs", "desc": "Ciclo disciplinato per bug difficili e regressioni.", "auto": true },
+    { "name": "prototype", "desc": "Prototipo usa e getta per una domanda di design.", "auto": true },
+    { "name": "research", "desc": "Legge fonti primarie e lascia un Markdown con citazioni.", "auto": true },
+    { "name": "domain-modeling", "desc": "Affina il linguaggio di dominio: termini, casi limite, ADR.", "auto": true },
+    { "name": "codebase-design", "desc": "Vocabolario dei moduli profondi: interfaccia, seam, adapter.", "auto": true },
+    { "name": "pr", "desc": "Corpo di una PR: visuale minima, prove, rischio del merge.", "auto": true },
+    { "name": "wizard", "desc": "Script interattivo per i passi che solo un umano può fare.", "auto": true },
+    { "name": "grill-me", "desc": "Grilling senza repository: non salva nulla." },
+    { "name": "handoff", "desc": "Documento portabile per passare il lavoro ad altri." },
+    { "name": "to-questionnaire", "desc": "Questionario Markdown per chi ha la risposta." },
+    { "name": "wait-what", "desc": "Rispiega l'ultimo messaggio in parole semplici." },
+    { "name": "teach", "desc": "Insegna un concetto su più sessioni." },
+    { "name": "grilling", "desc": "La primitiva di intervista dietro le altre skill.", "auto": true },
+    { "name": "writing-for-agents", "desc": "Come scrivere documenti per agenti.", "auto": true }
+  ]
+}
