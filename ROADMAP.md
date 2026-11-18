@@ -48,7 +48,7 @@ Viste:
 
 - **Navigatore**: elenco a sinistra (numero, titolo, stato, blocchi) e dettaglio a destra. Azioni: Modifica (editor di Tern), Stato (valori presi da `docs/agents/triage-labels.md`; sui ticket di `to-tickets` niente `needs-triage`/`needs-info`), Implementa (copia `/skill:implement <NN>`, segnala i ticket bloccati). Sui ticket di wayfinder (riga `Type:`) niente Implementa: sono decisioni. Sulla spec: «Implementa tutta la spec» (`/skill:implement-spec`).
 - **Grafo dei ticket** (approvato il 18/11, sostituisce le corsie): un riquadro per ticket, frecce dalle righe `Blocked by:`, colori dalle righe `Status:` (fatto, pronto per l'agente, serve una persona o mancano info, bloccato, wontfix). Immagine SVG nel blocco tramite `cx:blob` (verificato con T5); le azioni stanno nell'elenco accanto. I ticket di wayfinder hanno una forma diversa. Uno stato fuori dall'elenco di Matt si mostra come «stato non standard».
-- **Da decidere:** come si segna un ticket «fatto», perché Matt non ha uno stato finale. A: `Status: done`, con la regola in `docs/agents/issue-tracker.md`. B: il file va in `issues/done/`.
+- **Ticket «fatto»** (scelta A, 18/11): Matt non ha uno stato finale, quindi il ticket chiuso ha `Status: done`. La regola va scritta in `docs/agents/issue-tracker.md` del repo, dove Matt mette le convenzioni del tracker, così la conoscono anche gli agenti. La F2 offre «Segna fatto» nel navigatore e propone la riga per `issue-tracker.md` se manca.
 
 Con un repo su GitHub il blocco mostra «Tracker: GitHub» e il link alle issue, senza roadmap.
 
