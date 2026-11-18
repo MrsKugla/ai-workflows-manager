@@ -6,7 +6,7 @@
       "options": [
         { "label": "Una sessione", "text": "deciso, e il lavoro sta in una sessione: implement subito, senza spec", "to": "piccola" },
         { "label": "Più sessioni", "text": "deciso, ma il lavoro richiede più sessioni: to-spec, poi to-tickets", "to": "multi" },
-        { "label": "Strada non chiara", "text": "non riuscite a decidere tutto in una sessione: handoff verso wayfinder", "to": "wayfinder", "prompt": "/skill:handoff per continuare con /wayfinder: {title}" }
+        { "label": "Strada non chiara", "text": "non riuscite a decidere tutto in una sessione: handoff verso wayfinder", "to": "wayfinder", "via": "handoff", "prompt": "/skill:handoff per continuare con /wayfinder: {title}" }
       ]
     }
   },
@@ -69,10 +69,10 @@
       "label": "Iniziativa enorme e incerta",
       "when": "Puoi nominare la destinazione ma non vedi la strada, e non sta in una sessione. Non usarlo per funzionalità ben definite.",
       "human": ["fissare la destinazione nella prima sessione", "rispondere di persona ai ticket di grilling", "scegliere tu tra le varianti dei prototipi", "chiudere tu ogni ticket dopo implement: Status e criteri"],
-      "warn": "Problema più segnalato: l'agente inizia a scrivere codice di produzione dentro la mappa. Tieni l'implementazione in sessioni separate.",
+      "warn": "Wayfinder decide, non programma. Se l'agente comincia a scrivere codice, fermalo: il codice arriva dopo, con to-spec, to-tickets e implement.",
       "steps": [
         { "skill": "setup-matt-pocock-skills", "note": "Una volta per repo. Su GitHub le etichette wayfinder:* le crei tu: vedi «Configura repo»." },
-        { "skill": "wayfinder", "label": "wayfinder (mappa)", "note": "Fissa la destinazione, disegna mappa e ticket, avvia le ricerche, poi si ferma. Se non c'è nebbia non serve una mappa: torna al grill.", "prompt": "/skill:wayfinder {title}{brief}", "after": { "kind": "new", "text": "Di solito: una sessione nuova per ogni ticket." } },
+        { "skill": "wayfinder", "label": "wayfinder (mappa)", "note": "Fissa la destinazione, disegna mappa e ticket, avvia le ricerche, poi si ferma. Se non c'è nebbia non serve una mappa: torna al grill. Se arrivi dal bivio: sessione nuova, e incolla in fondo il percorso del file di handoff.", "prompt": "/skill:wayfinder {title}{brief}{handoff}", "after": { "kind": "new", "text": "Di solito: una sessione nuova per ogni ticket." } },
         { "skill": "wayfinder", "label": "wayfinder (un ticket)", "note": "Prende un ticket dalla frontiera (aperto, non bloccato, non preso) e lo risolve. Un ticket per sessione.", "prompt": "/skill:wayfinder", "after": { "kind": "new", "text": "Quando la mappa è chiara e nessun codice è stato scritto: to-spec sulla mappa." } },
         { "skill": "to-spec", "note": "Condensa le decisioni della mappa in una spec. Se il lavoro si è rivelato piccolo: implement direttamente.", "prompt": "/skill:to-spec {map}", "after": { "kind": "continue", "text": "Di solito: continua nella stessa sessione." } },
         { "skill": "to-tickets", "check": "rileggi la spec: seams, «Out of Scope» e le regole che l'agente dice di aver aggiunto. Se non rispondi, to-tickets le considera approvate.", "note": "Ticket «tracer bullet» con Blocked by.", "prompt": "/skill:to-tickets", "after": { "kind": "clear", "text": "Di solito: /clear. Da qui ogni ticket riparte da zero." } },
@@ -110,7 +110,7 @@
       "human": ["scegliere tra le varianti", "registrare la risposta e il branch prototype/<nome> sull'issue"],
       "steps": [
         { "skill": "handoff", "note": "Esporta il contesto in un file: il prototipo vive in un'altra cartella. La sessione originale resta aperta.", "prompt": "/skill:handoff per prototipare: {title}", "after": { "kind": "new", "text": "Nuova sessione nella cartella del prototipo: falle leggere il file di handoff. Non chiudere l'originale." } },
-        { "skill": "prototype", "note": "HTML unico o più varianti UI; conservato su un branch prototype/<nome>.", "prompt": "/skill:prototype {title}{brief}" },
+        { "skill": "prototype", "note": "HTML unico o più varianti UI; conservato su un branch prototype/<nome>. Incolla in fondo il percorso del file di handoff.", "prompt": "/skill:prototype {title}{brief}. Leggi prima il file di handoff: " },
         { "skill": "handoff", "label": "handoff (ritorno)", "note": "Riporta in un file quanto appreso.", "prompt": "/skill:handoff riporta quanto appreso dal prototipo", "after": { "kind": "new", "text": "Torna nella sessione originale dell'idea." } },
         { "label": "ritorno nella sessione originale", "note": "Falle leggere il file di ritorno; poi il flusso prosegue: to-spec o implement.", "prompt": "Leggi questo file di handoff e riprendiamo: " }
       ]

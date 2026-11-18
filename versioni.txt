@@ -1,3 +1,7 @@
+0.6.1 - [18/11/2026]
+    - Dopo il bivio «Strada non chiara» il prompt di wayfinder chiede di leggere prima il file di handoff, e lo stesso fa il prompt di prototype: Matt fa ripartire la sessione nuova da quel file. Il percorso lo stampa l'agente e lo incolli tu (file: host.luau, workflows.json)
+    - Avviso del workflow wayfinder riscritto in parole semplici: wayfinder decide, non programma (file: workflows.json)
+
 0.6.0 - [18/11/2026]
     - INCOMPATIBILE: il plugin ripropone solo le indicazioni di Matt Pocock. I prompt sono come li scrive lui (/skill:to-spec, /skill:to-tickets, /skill:implement 01, /skill:wayfinder senza percorsi); le note, i passi e le cose da decidere sono corretti sui suoi documenti; aggiunti retro, pr e code-review dove li prevede (file: workflows.json)
     - Il nome breve non è più la cartella: le skill scelgono la cartella in .scratch/ e il blocco la ritrova dopo un passo e la collega al problema; con più cartelle nuove chiede quale (file: host.luau)

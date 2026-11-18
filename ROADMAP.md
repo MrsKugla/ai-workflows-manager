@@ -17,10 +17,35 @@ Stato verificato il 18/11/2026 sul codice della 0.6.0, su Tern 0.9.26 e sulle 27
 ### 1. Prossima prova
 
 - Su un repo GitHub: `setup` crea le etichette? Se sì, togli dal pulsante di riserva le cinque di triage.
-- Prova il bivio «Strada non chiara»: il testo copiato (`/skill:handoff per continuare con /wayfinder: …`) porta davvero a `wayfinder`?
-- Prova `implement 01` sui ticket di `ai-workflows-example` (serve `git init` nella cartella).
+- Prova il bivio «Strada non chiara»: il testo copiato (`/skill:handoff per continuare con /wayfinder: …`) porta davvero a `wayfinder`? Fatto il 18/11: sì, `handoff` scrive il file in `%TEMP%` e indica `/wayfinder` come passo successivo; il workflow passa a «Iniziativa enorme e incerta». Il buco trovato (il passo `wayfinder` non diceva di leggere il file di handoff) è corretto nella 0.6.1: da verificare copiando il passo 2.
+- Prova `implement 01` sui ticket di `ai-workflows-example` (serve `git init` nella cartella). Fatto il 18/11: il codice c'è, senza commit; il ticket 01 l'ha chiuso l'agente per una regola che avevo fatto aggiungere io in `issue-tracker.md`, poi tolta (vedi F2, «Chiudere un ticket»).
 
-### 2. Interfaccia nel pane stretto (critica UI della 0.2.0)
+### 2. F2 · Ticket e roadmap
+
+Legge il formato del tracker locale delle skill, senza modificarlo:
+
+- un file per ticket in `.scratch/<nome>/issues/NN-<slug>.md`, con le righe `Status:` e `Blocked by:` in tutte e due le forme che le skill scrivono (in grassetto da `to-tickets`, semplici da `wayfinder`), e «None»;
+- la mappa in `.scratch/<nome>/map.md` (scritta da `wayfinder`).
+
+Viste:
+
+- **Navigatore**: elenco a sinistra (numero, titolo, stato, blocchi) e dettaglio a destra. Azioni: Modifica (editor di Tern), Stato (valori presi da `docs/agents/triage-labels.md`; sui ticket di `to-tickets` niente `needs-triage`/`needs-info`), Implementa (copia `/skill:implement <NN>`, segnala i ticket bloccati). Sui ticket di wayfinder (riga `Type:`) niente Implementa: sono decisioni. Sulla spec: «Implementa tutta la spec» (`/skill:implement-spec`).
+- **Grafo dei ticket** (approvato il 18/11, sostituisce le corsie): un riquadro per ticket, frecce dalle righe `Blocked by:`, colori dalle righe `Status:` (fatto, pronto per l'agente, serve una persona o mancano info, bloccato, wontfix). Immagine SVG nel blocco tramite `cx:blob` (verificato con T5); le azioni stanno nell'elenco accanto. I ticket di wayfinder hanno una forma diversa. Uno stato fuori dall'elenco di Matt si mostra come «stato non standard».
+- **Chiudere un ticket** (decisione del 18/11): Matt scrive «implement non chiude il ticket: chiudilo tu e spunta i criteri» ([implement.md](https://github.com/mattpocock/skills/blob/main/docs/engineering/implement.md)), ma per il tracker locale non dice come e non ha uno stato finale. Nel navigatore ogni ticket ha una casella «fatto»: la spunti tu e il plugin scrive `Status: done` nel file. Nessuna regola in `issue-tracker.md`: il ticket non lo chiude l'agente.
+
+Con un repo su GitHub il blocco mostra «Tracker: GitHub» e il link alle issue, senza roadmap.
+
+### 3. F3 · Conoscenza
+
+Vista di sola lettura su `docs/adr/` (in ordine di numero) e su `GLOSSARY.md`, con ricerca. Nei repo con più contesti legge `GLOSSARY-MAP.md` e `src/<contesto>/docs/adr/`; legge anche i vecchi `CONTEXT.md` / `CONTEXT-MAP.md`. Se i file non esistono mostra uno stato vuoto, senza invitare a crearli (Matt: «Don't flag their absence»).
+
+### 4. F5 · Ticket GitHub in sola lettura
+
+Come la F2, ma legge le issue con `gh`. Richiede l'installazione di `gh`.
+
+### 5. Interfaccia nel pane stretto (critica UI della 0.2.0)
+
+In fondo, dopo le fasi che cambiano le schermate (decisione del 18/11): sistemare prima la UI vorrebbe dire rifarla. Restano le correzioni urgenti di struttura, quando servono.
 
 Otto problemi ancora aperti nel pane da 68 colonne. Corretti: «1 passi» (0.3.0), prossimo passo evidenziato e data corta (0.6.0).
 
@@ -36,29 +61,6 @@ Otto problemi ancora aperti nel pane da 68 colonne. Corretti: «1 passi» (0.3.0
   - In «Configura repo» la scritta «Installate in ~/.agents/skills» va a capo su quattro righe.
 - **Rifiniture (P3)**
   - Il pulsante 📋 ha solo l'icona.
-
-### 3. F2 · Ticket e roadmap
-
-Legge il formato del tracker locale delle skill, senza modificarlo:
-
-- un file per ticket in `.scratch/<nome>/issues/NN-<slug>.md`, con le righe `Status:` e `Blocked by:` in tutte e due le forme che le skill scrivono (in grassetto da `to-tickets`, semplici da `wayfinder`), e «None»;
-- la mappa in `.scratch/<nome>/map.md` (scritta da `wayfinder`).
-
-Viste:
-
-- **Navigatore**: elenco a sinistra (numero, titolo, stato, blocchi) e dettaglio a destra. Azioni: Modifica (editor di Tern), Stato (valori presi da `docs/agents/triage-labels.md`; sui ticket di `to-tickets` niente `needs-triage`/`needs-info`), Implementa (copia `/skill:implement <NN>`, segnala i ticket bloccati). Sui ticket di wayfinder (riga `Type:`) niente Implementa: sono decisioni. Sulla spec: «Implementa tutta la spec» (`/skill:implement-spec`).
-- **Grafo dei ticket** (approvato il 18/11, sostituisce le corsie): un riquadro per ticket, frecce dalle righe `Blocked by:`, colori dalle righe `Status:` (fatto, pronto per l'agente, serve una persona o mancano info, bloccato, wontfix). Immagine SVG nel blocco tramite `cx:blob` (verificato con T5); le azioni stanno nell'elenco accanto. I ticket di wayfinder hanno una forma diversa. Uno stato fuori dall'elenco di Matt si mostra come «stato non standard».
-- **Ticket «fatto»** (scelta A, 18/11): Matt non ha uno stato finale, quindi il ticket chiuso ha `Status: done`. La regola va scritta in `docs/agents/issue-tracker.md` del repo, dove Matt mette le convenzioni del tracker, così la conoscono anche gli agenti. La F2 offre «Segna fatto» nel navigatore e propone la riga per `issue-tracker.md` se manca.
-
-Con un repo su GitHub il blocco mostra «Tracker: GitHub» e il link alle issue, senza roadmap.
-
-### 4. F3 · Conoscenza
-
-Vista di sola lettura su `docs/adr/` (in ordine di numero) e su `GLOSSARY.md`, con ricerca. Nei repo con più contesti legge `GLOSSARY-MAP.md` e `src/<contesto>/docs/adr/`; legge anche i vecchi `CONTEXT.md` / `CONTEXT-MAP.md`. Se i file non esistono mostra uno stato vuoto, senza invitare a crearli (Matt: «Don't flag their absence»).
-
-### 5. F5 · Ticket GitHub in sola lettura
-
-Come la F2, ma legge le issue con `gh`. Richiede l'installazione di `gh`.
 
 ## Idee non pianificate
 

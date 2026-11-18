@@ -9,7 +9,7 @@
 local ui = tern.ui
 local Secrets = require("./secrets")
 
-local VERSION = "0.6.0"
+local VERSION = "0.6.1"
 local AGENTS_KEY = "agents"
 local SCAN_EVERY_MS = 3000
 local SHORT_MAX = 40
@@ -218,6 +218,9 @@ local function loadProblems(state: State)
 			if type(p.folder) ~= "string" then
 				p.folder = nil
 			end
+			if type(p.via) ~= "string" then
+				p.via = nil
+			end
 			table.insert(state.all, p)
 		end
 	end
@@ -231,6 +234,7 @@ local function saveProblems(state: State)
 			title = p.title,
 			brief = p.brief or "",
 			folder = p.folder or tern.json.null,
+			via = p.via or tern.json.null, -- "handoff" when the problem reached its workflow through a handoff
 			workflow = p.workflow or tern.json.null,
 			status = p.status,
 			created = p.created,
@@ -468,6 +472,10 @@ local function fill(state: State, p: any, prompt: string): string
 	end)
 	out = string.gsub(out, "{brief}", function()
 		return if brief ~= "" then ". " .. brief else ""
+	end)
+	-- Matt: open the fresh session and point it at the handoff file. Its path is printed by the agent.
+	out = string.gsub(out, "{handoff}", function()
+		return if p.via == "handoff" then ". Leggi prima il file di handoff: " else ""
 	end)
 	return out
 end
@@ -1384,6 +1392,7 @@ local board: BlockDef<State> = {
 					copyText(cx, fill(state, p, o.prompt), p.session, ev.window)
 				end
 				if o.to ~= p.workflow and situation(state, o.to) then
+					p.via = if type(o.via) == "string" then o.via else nil
 					switchWorkflow(state, p, o.to, true)
 					if not o.prompt then
 						cx:toast("info", "Workflow cambiato", tostring(o.label))
