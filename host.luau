@@ -1,15 +1,15 @@
 --!strict
 -- AI Workflows: the board block (host half).
--- Problems live in one file, .ai-workflows/problems.json (B3, rev. 5). Each has a short name that
--- becomes .scratch/<name>/ once to-spec, to-tickets or wayfinder writes there; the plugin never creates
--- that folder. Workflows come from workflows.json (B2); checklist with a copy button per step (C1),
--- linked omp session (A2), «Configura repo» (B1), archive and delete. Agents come from tern.kv,
--- published by the window half (A3). Secret scan of .scratch/ and problems.json (B5): secrets.luau.
+-- A thin wrapper over Matt Pocock's skills: it shows his flow, his options and his context hints, and
+-- copies his invocations. Problems live in .ai-workflows/problems.json. The skills name the
+-- .scratch/<folder>/ of a problem; the block finds it after a step and links it (0.6.0, choice A).
+-- Workflows come from workflows.json; linked omp session; «Configura repo» copies the bare setup skill.
+-- Agents come from tern.kv, published by the window half. Secret scan of .scratch/ and problems.json: secrets.luau.
 
 local ui = tern.ui
 local Secrets = require("./secrets")
 
-local VERSION = "0.5.1"
+local VERSION = "0.6.0"
 local AGENTS_KEY = "agents"
 local SCAN_EVERY_MS = 3000
 local SHORT_MAX = 40
@@ -31,11 +31,10 @@ type State = {
 	screen: string, -- "home" | "situation" | "workflow" | "archive"
 	current: string?, -- id of the open problem
 	changing: boolean, -- situation screen opened by «Cambia workflow»
-	layer: string?, -- "form" | "link" | "setup" | "confirm"
+	layer: string?, -- "form" | "link" | "setup" | "confirm" | "pickfolder"
 	form: Form?,
 	confirm: string?, -- id to delete
-	tracker: string,
-	domain: string,
+	candidates: { string }, -- .scratch/ folders the open problem could own, when more than one
 	flows: any,
 	flowsSource: string,
 	all: { any },
@@ -216,6 +215,9 @@ local function loadProblems(state: State)
 	end
 	for _, p in data.problems do
 		if type(p) == "table" and type(p.id) == "string" and type(p.title) == "string" then
+			if type(p.folder) ~= "string" then
+				p.folder = nil
+			end
 			table.insert(state.all, p)
 		end
 	end
@@ -228,6 +230,7 @@ local function saveProblems(state: State)
 			id = p.id,
 			title = p.title,
 			brief = p.brief or "",
+			folder = p.folder or tern.json.null,
 			workflow = p.workflow or tern.json.null,
 			status = p.status,
 			created = p.created,
@@ -339,6 +342,59 @@ local function describe(f: Folder?): string
 	return if #parts > 0 then table.concat(parts, " + ") else "vuota"
 end
 
+-- The skills name the folder (issue-tracker-local.md: .scratch/<feature-slug>/), not the plugin. A
+-- problem keeps the folder it was linked to; older problems whose short name is the folder keep it.
+
+local function folderOf(state: State, p: any): string?
+	if type(p.folder) == "string" and p.folder ~= "" then
+		return p.folder
+	end
+	if tern.fs.exists(folderPath(state, p.id)) then
+		return p.id
+	end
+	return nil
+end
+
+-- Folders in .scratch/ with something a skill wrote (spec, map or tickets) that no other problem owns.
+local function unclaimed(state: State, p: any): { string }
+	local ok, names = pcall(tern.fs.list, join(state.dir, ".scratch"))
+	if not ok then
+		return {}
+	end
+	local owned: { [string]: boolean } = {}
+	for _, q in state.all do
+		if q ~= p then
+			local d = folderOf(state, q)
+			if d then
+				owned[d] = true
+			end
+		end
+	end
+	local out = {}
+	for _, n in names do
+		local f = if owned[n] then nil else folder(state, n)
+		if f and (f.spec or f.map or f.tickets > 0) then
+			table.insert(out, n)
+		end
+	end
+	return out
+end
+
+-- After a step: link the folder the skill created. One candidate links itself; more wait for «Scegli».
+local function discover(state: State, p: any)
+	state.candidates = {}
+	if folderOf(state, p) then
+		return
+	end
+	local list = unclaimed(state, p)
+	if #list == 1 then
+		p.folder = list[1]
+		touch(state, p)
+	else
+		state.candidates = list
+	end
+end
+
 -- Agents (A2) and the repo setup state (B1).
 
 local function agents(): { any }
@@ -401,13 +457,14 @@ end
 
 -- Copy (C1): the step button copies the invocation and brings the linked omp pane forward (T8).
 
-local function fill(p: any, prompt: string): string
-	local brief = trim(string.gsub(p.brief or "", "%s+", " "))
+local function fill(state: State, p: any, prompt: string): string
+	local brief = trim((string.gsub(p.brief or "", "%s+", " ")))
+	local dir = folderOf(state, p)
 	local out = string.gsub(prompt, "{title}", function()
 		return p.title
 	end)
-	out = string.gsub(out, "{slug}", function()
-		return p.id
+	out = string.gsub(out, "{map}", function()
+		return if dir then ".scratch/" .. dir .. "/map.md" else ""
 	end)
 	out = string.gsub(out, "{brief}", function()
 		return if brief ~= "" then ". " .. brief else ""
@@ -425,39 +482,19 @@ local function copyText(cx: BlockCx, text: string, pane: any, window: string?)
 	end
 end
 
-local TRACKERS = {
-	{ id = "local", label = "Markdown locale (consigliato)", prompt = "local markdown" },
-	{ id = "github", label = "GitHub", prompt = "GitHub" },
-	{ id = "gitlab", label = "GitLab", prompt = "GitLab" },
-	{ id = "other", label = "Altro…", prompt = "altro: te lo descrivo" },
+-- Labels setup does not create (setup-matt-pocock-skills.md, triage.md): the two triage categories and
+-- wayfinder's. The five triage states are there too, for trackers set up before setup created them.
+local LABELS = {
+	"needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix",
+	"bug", "enhancement",
+	"wayfinder:map", "wayfinder:research", "wayfinder:prototype", "wayfinder:grilling", "wayfinder:task",
 }
-local DOMAINS = {
-	{ id = "single", label = "Un contesto (GLOSSARY.md + docs/adr/)", prompt = "single-context" },
-	{ id = "multi", label = "Monorepo", prompt = "multi-context" },
-}
-local LABELS = { "needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix" }
+local SETUP_PROMPT = "/skill:setup-matt-pocock-skills"
 
-local function pickById(list: { any }, id: string): any
-	for _, x in list do
-		if x.id == id then
-			return x
-		end
-	end
-	return list[1]
-end
-
-local function setupPrompt(state: State): string
-	return "/skill:setup-matt-pocock-skills Tracker: "
-		.. pickById(TRACKERS, state.tracker).prompt
-		.. ". Etichette di triage: quelle predefinite. Documenti di dominio: "
-		.. pickById(DOMAINS, state.domain).prompt
-		.. "."
-end
-
-local function ghLabels(): string
+local function labelCommands(cli: string): string
 	local lines = {}
 	for _, l in LABELS do
-		table.insert(lines, "gh label create " .. l)
+		table.insert(lines, if cli == "glab" then "glab label create --name " .. l else "gh label create " .. l .. " --force")
 	end
 	return table.concat(lines, "\n")
 end
@@ -476,8 +513,9 @@ local function newForm(state: State, p: any?): Form
 	}
 end
 
-local function shortLocked(state: State, f: Form): boolean
-	return f.editing ~= nil and folder(state, f.editing :: string) ~= nil
+local function day(at: any): string
+	local m, d = string.match(tostring(at), "^%d+%-(%d+)%-(%d+)")
+	return if m and d then d .. "/" .. m else tostring(at)
 end
 
 local function validate(state: State, f: Form): boolean
@@ -496,8 +534,6 @@ local function validate(state: State, f: Form): boolean
 		local other = find(state, short)
 		if other and other.id ~= f.editing then
 			f.errs.short = "Già usato da «" .. other.title .. "»"
-		elseif short ~= f.editing and tern.fs.exists(folderPath(state, short)) then
-			f.errs.short = "Esiste già la cartella .scratch/" .. short .. "/"
 		end
 	end
 	return next(f.errs) == nil
@@ -505,24 +541,10 @@ end
 
 -- Views.
 
-local function choice(prefix: string, list: { any }, selected: string): Node
-	local buttons = {}
-	for _, x in list do
-		table.insert(buttons, ui.button(x.label, {
-			key = x.id,
-			size = "sm",
-			on = x.id == selected,
-			icon = if x.id == selected then "check" else nil,
-			actions = { click = prefix .. "=" .. x.id },
-		}))
-	end
-	return keyed(ui.row(buttons), prefix)
-end
-
 local function setupView(state: State): Node
 	local installed = skillsInstalled()
 	local status = trackerStatus(state)
-	local children: { Node } = {
+	return ui.node("overlay", { key = "setup", head = "Configura repo", icon = "pen", size = "md", modal = true, foot = "layer.setup.foot" }, {
 		line("status", {
 			ui.span("Stato: ", "muted"),
 			ui.span(if status then "configurato · " .. status else "non configurato", if status then "success" else "warning"),
@@ -530,49 +552,35 @@ local function setupView(state: State): Node
 		ui.rule("1 · Skill di Matt Pocock"),
 		keyed(ui.row({
 			ui.text({ ui.span(if installed then "Installate in ~/.agents/skills" else "Non trovate", if installed then "success" else "warning") }),
-			ui.button("Copia comando di installazione", {
-				key = "install",
-				size = "sm",
-				icon = "copy",
-				actions = { click = "copyinstall" },
-			}),
+			ui.button("Copia comando di installazione", { key = "install", size = "sm", icon = "copy", actions = { click = "copyinstall" } }),
 		}), "s1"),
-		ui.rule("2 · Tracker"),
-		choice("tracker", TRACKERS, state.tracker),
-	}
-	if state.tracker == "github" then
-		table.insert(children, ui.rule("3 · Solo con GitHub"))
-		table.insert(children, keyed(ui.row({
-			ui.text({ ui.span("Serve gh con gh auth status a posto; il setup non crea le etichette.", "muted") }),
-			ui.button("Copia gh label create", { key = "gh", size = "sm", icon = "copy", actions = { click = "copygh" } }),
-		}), "s3"))
-	end
-	table.insert(children, ui.rule((if state.tracker == "github" then "4" else "3") .. " · Documenti di dominio"))
-	table.insert(children, choice("domain", DOMAINS, state.domain))
-	table.insert(children, ui.rule((if state.tracker == "github" then "5" else "4") .. " · Invocazione"))
-	table.insert(children, keyed(ui.code(setupPrompt(state), "text"), "prompt"))
-	table.insert(children, line("after", { ui.span("Dopo il setup, «Aggiorna» rilegge docs/agents/ e mostra il tracker configurato.", "muted") }))
-	table.insert(children, keyed(ui.row({
-		ui.button("Chiudi", { key = "close", variant = "quiet", keys = { "esc" }, actions = { click = "closelayer" } }),
-		ui.button("Copia /skill:setup-matt-pocock-skills", { key = "copy", variant = "primary", icon = "copy", actions = { click = "copysetup" } }),
-	}), "foot"))
-	return ui.node("overlay", { key = "setup", head = "Configura repo", icon = "pen", size = "md", modal = true, foot = "layer.setup.foot" }, children)
+		line("s1h", { ui.span("Quando l'installer chiede quali skill, includi setup-matt-pocock-skills.", "muted") }),
+		ui.rule("2 · Setup"),
+		line("s2", { ui.span("La skill esplora il repo, propone tracker, etichette e documenti di dominio e chiede una sezione alla volta. Con un remote GitHub propone GitHub.", "muted") }),
+		keyed(ui.code(SETUP_PROMPT, "text"), "prompt"),
+		ui.rule("3 · Etichette, solo con GitHub o GitLab"),
+		line("s3", { ui.span("Il setup crea quelle di triage; bug, enhancement e wayfinder:* le crei tu.", "muted") }),
+		keyed(ui.row({
+			ui.button("Copia per gh", { key = "gh", size = "sm", icon = "copy", actions = { click = "copylabels=gh" } }),
+			ui.button("Copia per glab", { key = "glab", size = "sm", icon = "copy", actions = { click = "copylabels=glab" } }),
+		}), "s3b"),
+		line("after", { ui.span("Dopo il setup, «Aggiorna» rilegge docs/agents/ e mostra il tracker configurato.", "muted") }),
+		keyed(ui.row({
+			ui.button("Chiudi", { key = "close", variant = "quiet", keys = { "esc" }, actions = { click = "closelayer" } }),
+			ui.button("Copia comando", { key = "copy", variant = "primary", icon = "copy", title = SETUP_PROMPT, actions = { click = "copysetup" } }),
+		}), "foot"),
+	})
 end
 
 local function formView(state: State, f: Form): Node
-	local locked = shortLocked(state, f)
-	local shortHint = if locked
-		then "Bloccato: .scratch/" .. (f.editing :: string) .. "/ esiste già e i ticket vi fanno riferimento."
-		else "Diventa la cartella .scratch/<nome>/ se una skill scrive spec, ticket o mappa."
-	local shortInput: Node = if locked
-		then ui.text({ ui.span(f.short.text, "mono") })
-		else ui.node("input", {
-			key = "short",
-			text = f.short.text,
-			cursor = if f.focus == "short" then units(f.short.text, f.short.caret) else nil,
-			placeholder = "storico-note",
-			mono = true,
-		})
+	local shortHint = "Identifica il problema nel plugin. La cartella in .scratch/ la sceglie la skill; il blocco la ritrova."
+	local shortInput: Node = ui.node("input", {
+		key = "short",
+		text = f.short.text,
+		cursor = if f.focus == "short" then units(f.short.text, f.short.caret) else nil,
+		placeholder = "storico-note",
+		mono = true,
+	})
 	return ui.node("overlay", {
 		key = "form",
 		head = if f.editing then "Modifica problema" else "Nuovo problema",
@@ -662,7 +670,8 @@ local function confirmView(state: State): Node?
 	if not p then
 		return nil
 	end
-	local f = folder(state, p.id)
+	local d = folderOf(state, p)
+	local f = if d then folder(state, d) else nil
 	local buttons: { Node } = {
 		ui.button("Annulla", { key = "cancel", variant = "quiet", keys = { "esc" }, actions = { click = "closelayer" } }),
 		ui.button("Solo il problema", { key = "one", variant = "danger", actions = { click = "delete=problem" } }),
@@ -673,12 +682,13 @@ local function confirmView(state: State): Node?
 	return ui.node("overlay", { key = "confirm", head = "Eliminare «" .. p.title .. "»?", icon = "trash", size = if f then "md" else "sm", modal = true, foot = "layer.confirm.foot" }, {
 		line("t", {
 			ui.span(
-				if f
-					then "La cartella .scratch/" .. p.id .. "/ contiene: " .. describe(f) .. ". «Solo il problema» la lascia dov'è."
+				if f and d
+					then "La cartella .scratch/" .. d .. "/ contiene: " .. describe(f) .. ". «Solo il problema» la lascia dov'è."
 					else "Il problema non ha una cartella in .scratch/.",
 				"muted"
 			),
 		}),
+		if f then line("m", { ui.span("Matt butta la spec dopo la consegna; se cambi direzione tiene la spec e cancella solo i ticket non finiti.", "muted") }) else line("m", {}),
 		line("g", { ui.span("Senza git la cancellazione non si annulla.", "muted") }),
 		keyed(ui.row(buttons), "foot"),
 	})
@@ -796,42 +806,108 @@ local function situationView(state: State, p: any): Node
 	})
 end
 
-local function stepRow(p: any, i: number, st: any): Node
+local AFTER_GLYPH: { [string]: string } = { continue = "▶", clear = "⟲", new = "↗", wait = "⏳" }
+
+local function stepRow(state: State, p: any, i: number, st: any, isNext: boolean): Node
 	local key = tostring(i)
 	local done = steps(p)[key]
 	local label = st.label or st.skill
+	local copy: Node = if st.prompt
+		then ui.button("", { key = "copy", size = "sm", icon = "copy", title = fill(state, p, st.prompt), actions = { click = "copystep=" .. key } })
+		else ui.text({})
 	local action: Node
-	if st.auto then
-		action = ui.badge("automatica", "info")
-	elseif st.skill == "setup-matt-pocock-skills" then
+	if st.skill == "setup-matt-pocock-skills" then
 		action = ui.button("Configura repo", { key = "b", size = "sm", icon = "pen", actions = { click = "setup" } })
-	elseif st.prompt then
-		action = ui.button("", { key = "b", size = "sm", icon = "copy", title = fill(p, st.prompt), actions = { click = "copystep=" .. key } })
+	elseif st.auto then
+		action = ui.row({ ui.badge("dal modello", "info"), copy })
 	else
-		action = ui.text({})
+		action = copy
 	end
 	local check: Node = if st.auto
 		then ui.text({ ui.span("·", "muted") })
 		else ui.el("input", { key = "c", type = "checkbox", name = "step", value = key, checked = done ~= nil })
+	local col: { Node } = {
+		ui.text({
+			ui.span(i .. ". ", "muted"),
+			ui.span(label, if done then "muted" elseif isNext then "accent strong" else nil),
+			ui.span(if done then "  fatto " .. day(done) elseif isNext then "  ▶ prossimo" else "", if done then "success" else "accent"),
+		}),
+		ui.text({ ui.span(st.note or "", "muted") }),
+	}
+	if st.check and not done then
+		table.insert(col, line("check", { ui.span("⚠ Prima di copiarlo: ", "warning strong"), ui.span(st.check, "warning") }))
+	end
+	local detours = st.detour and state.flows.detours and state.flows.detours[st.detour]
+	if type(detours) == "table" and not done then
+		local row: { Node } = { ui.text({ ui.span("Se serve:", "muted") }) }
+		for j, d in detours do
+			table.insert(row, ui.button(d.label, { key = "d" .. j, size = "sm", variant = "quiet", icon = "copy", title = d.text, actions = { click = "detour=" .. st.detour .. ":" .. j } }))
+		end
+		table.insert(col, keyed(ui.row(row), "detours"))
+	end
 	return keyed(ui.row({
 		keyed(check, "c"),
-		ui.node("col", { key = "t", grow = 1, basis = 0 }, {
-			ui.text({ ui.span(i .. ". ", "muted"), ui.span(label, if done then "muted" else "accent"), ui.span(if done then "  fatto " .. tostring(done) else "", "success") }),
-			ui.text({ ui.span(st.note or "", "muted") }),
-		}),
+		ui.node("col", { key = "t", grow = 1, basis = 0 }, col),
 		keyed(action, "b"),
 	}), "s" .. key)
+end
+
+-- Matt's branch after the grill (ask-matt, main flow step 3): one session, several, or no clear route.
+local function forkCard(state: State, p: any, id: string): Node?
+	local fk = state.flows.forks and state.flows.forks[id]
+	if type(fk) ~= "table" then
+		return nil
+	end
+	local items: { Node } = {}
+	for j, o in fk.options do
+		local here = o.to == p.workflow
+		table.insert(items, keyed(ui.row({
+			ui.node("col", { key = "t", grow = 1, basis = 0 }, {
+				ui.text({ ui.span(o.label, if here then "accent strong" else "strong"), ui.span(if here then "  · questo workflow" else "", "muted") }),
+				ui.text({ ui.span(o.text, "muted") }),
+			}),
+			ui.button(if here then "Restaci" elseif o.prompt then "Copia e passa" else "Passa", {
+				key = "b",
+				size = "sm",
+				icon = if o.prompt and not here then "copy" else nil,
+				disabled = here,
+				actions = { click = "fork=" .. id .. ":" .. j },
+			}),
+		}), "o" .. j))
+	end
+	return ui.card("Bivio · " .. fk.title, items, { key = "fork", icon = "repeat", tone = "warning", meta = "dal flusso di Matt" })
 end
 
 local function workflowView(state: State, p: any): Node
 	local s = situation(state, p.workflow)
 	local a = p.session and agent(p.session)
-	local f = folder(state, p.id)
+	local dir = folderOf(state, p)
+	local f = if dir then folder(state, dir) else nil
 	local body: { Node } = {}
 	if s then
+		local nextIdx: number? = nil
 		for i, st in s.steps do
-			table.insert(body, stepRow(p, i, st))
-			if st.sep then
+			if not st.auto and not steps(p)[tostring(i)] then
+				nextIdx = i
+				break
+			end
+		end
+		for i, st in s.steps do
+			local done = steps(p)[tostring(i)] ~= nil
+			local nextDone = steps(p)[tostring(i + 1)] ~= nil
+			table.insert(body, stepRow(state, p, i, st, i == nextIdx))
+			if st.fork and done and not nextDone then
+				local card = forkCard(state, p, st.fork)
+				if card then
+					table.insert(body, keyed(card, "fork" .. i))
+				end
+			end
+			if type(st.after) == "table" then
+				local hot = done and not nextDone
+				table.insert(body, line("after" .. i, {
+					ui.span((AFTER_GLYPH[st.after.kind] or "·") .. " " .. tostring(st.after.text), if hot then "accent strong" else "muted"),
+				}))
+			elseif st.sep then
 				table.insert(body, keyed(ui.rule(st.sep), "sep" .. i))
 			end
 		end
@@ -843,7 +919,8 @@ local function workflowView(state: State, p: any): Node
 			cells = {
 				{ ui.span(sk.name, "mono") },
 				{ ui.span(sk.desc or "", "muted") },
-				if sk.auto then { badge = { text = "dal modello", tone = "info" } } else { button = { text = "Copia", act = "copyskill", icon = "copy" } },
+				if sk.auto then { badge = { text = "dal modello", tone = "info", title = "L'agente la usa da sola; puoi anche invocarla" } } else { ui.span("") },
+				{ button = { text = "Copia", act = "copyskill", icon = "copy" } },
 			},
 		})
 	end
@@ -856,19 +933,30 @@ local function workflowView(state: State, p: any): Node
 	if trim(p.brief or "") ~= "" then
 		table.insert(head, line("brief", { ui.span(p.brief) }))
 	end
+	local where: { Span }
+	if dir then
+		where = { ui.span(".scratch/" .. dir .. "/", "mono"), ui.span("  " .. describe(f), "muted") }
+	elseif #state.candidates > 1 then
+		where = { ui.span(#state.candidates .. " cartelle nuove in .scratch/: scegli quale", "warning") }
+	else
+		where = { ui.span("non ancora creata: la crea la skill", "muted") }
+	end
 	table.insert(head, ui.kv({
 		{ "Workflow", if s then s.label else "—" },
-		{ "Cartella", { ui.span(".scratch/" .. p.id .. "/", "mono"), ui.span("  " .. describe(f), "muted") } },
+		{ "Cartella", where },
 		{ "Sessione", if a then tostring(a.title or "omp") .. " · " .. tostring(a.state) else (if p.session then "chiusa" else "nessuna") },
 	}))
-	if f and (f.spec or f.map) then
-		local open: { Node } = {}
-		if f.spec then
-			table.insert(open, ui.button("Apri spec", { key = "spec", size = "sm", icon = "folder-open", actions = { click = "openfile=spec.md" } }))
-		end
-		if f.map then
-			table.insert(open, ui.button("Apri mappa", { key = "map", size = "sm", icon = "folder-open", actions = { click = "openfile=map.md" } }))
-		end
+	local open: { Node } = {}
+	if f and f.spec then
+		table.insert(open, ui.button("Apri spec", { key = "spec", size = "sm", icon = "folder-open", actions = { click = "openfile=spec.md" } }))
+	end
+	if f and f.map then
+		table.insert(open, ui.button("Apri mappa", { key = "map", size = "sm", icon = "folder-open", actions = { click = "openfile=map.md" } }))
+	end
+	if not dir and #state.candidates > 1 then
+		table.insert(open, ui.button("Scegli cartella", { key = "pick", size = "sm", icon = "folder-open", actions = { click = "pickfolder" } }))
+	end
+	if #open > 0 then
 		table.insert(head, keyed(ui.row(open), "open"))
 	end
 	if total > 0 then
@@ -897,7 +985,7 @@ local function workflowView(state: State, p: any): Node
 		table.insert(children, ui.card("Cosa decidi tu", { ui.list(human) }, { key = "human", icon = "info", collapsible = true }))
 	end
 	table.insert(children, ui.card("Altre skill", {
-		ui.table({ { id = "n", head = "Skill" }, { id = "d", head = "", grow = 1 }, { id = "b", head = "", align = "end" } }, others),
+		ui.table({ { id = "n", head = "Skill" }, { id = "d", head = "", grow = 1 }, { id = "a", head = "" }, { id = "b", head = "", align = "end" } }, others),
 	}, { key = "others", icon = "sparkle", collapsible = true, collapsed = true, meta = #others .. "" }))
 	if #history > 0 then
 		table.insert(children, ui.card("Storico workflow", { ui.list(history) }, { key = "history", icon = "archive", collapsible = true, collapsed = true }))
@@ -905,15 +993,31 @@ local function workflowView(state: State, p: any): Node
 	return ui.col(children)
 end
 
+local function pickFolderView(state: State): Node
+	local items: { Node } = {}
+	for j, n in state.candidates do
+		table.insert(items, keyed(ui.row({
+			ui.text({ ui.span(".scratch/" .. n .. "/", "mono"), ui.span("  " .. describe(folder(state, n)), "muted") }),
+			ui.button("Collega", { key = "b", size = "sm", variant = "primary", actions = { click = "setfolder=" .. n } }),
+		}), "c" .. j))
+	end
+	table.insert(items, line("h", { ui.span("Cartelle scritte da una skill che nessun altro problema usa.", "muted") }))
+	table.insert(items, keyed(ui.row({
+		ui.button("Chiudi", { key = "close", variant = "quiet", keys = { "esc" }, actions = { click = "closelayer" } }),
+	}), "foot"))
+	return ui.node("overlay", { key = "pickfolder", head = "Quale cartella è di questo problema?", icon = "folder-open", size = "md", modal = true, foot = "layer.pickfolder.foot" }, items)
+end
+
 local function archiveView(state: State): Node
 	local items: { Node } = {}
 	for _, p in listBy(state, true) do
-		local f = folder(state, p.id)
+		local d = folderOf(state, p)
+		local f = if d then folder(state, d) else nil
 		table.insert(items, keyed(ui.row({
 			ui.node("col", { key = "t", grow = 1, basis = 0 }, {
 				ui.text({ ui.span(p.title) }),
 				ui.text({
-					ui.span(if f then ".scratch/" .. p.id .. "/ · " .. describe(f) else "nessuna cartella", "muted"),
+					ui.span(if f and d then ".scratch/" .. d .. "/ · " .. describe(f) else "nessuna cartella", "muted"),
 					ui.span("  · archiviato " .. tostring(p.updated or ""), "muted"),
 				}),
 			}),
@@ -940,6 +1044,7 @@ local function openProblem(state: State, id: string)
 	state.current = id
 	state.changing = false
 	state.screen = if p.workflow and situation(state, p.workflow) then "workflow" else "situation"
+	discover(state, p)
 end
 
 local function openForm(state: State, cx: BlockCx, p: any?)
@@ -953,8 +1058,12 @@ local function saveForm(state: State, cx: BlockCx)
 	if not f then
 		return
 	end
-	if shortLocked(state, f) then
-		f.short = field(f.editing :: string)
+	if f.editing then
+		-- Keep the folder of an older problem whose short name was the folder name.
+		local old = find(state, f.editing)
+		if old and not old.folder then
+			old.folder = folderOf(state, old)
+		end
 	end
 	if not validate(state, f) then
 		return
@@ -992,15 +1101,11 @@ local function formKey(state: State, f: Form, key: Key, cx: BlockCx): boolean
 	elseif key.name == "enter" then
 		saveForm(state, cx)
 	elseif key.name == "tab" then
-		local order = if shortLocked(state, f) then { "title", "brief" } else FORM_ORDER
-		local at = table.find(order, f.focus) or 1
+		local at = table.find(FORM_ORDER, f.focus) or 1
 		local step = if key.shift then -1 else 1
-		f.focus = order[((at - 1 + step) % #order) + 1]
+		f.focus = FORM_ORDER[((at - 1 + step) % #FORM_ORDER) + 1]
 		focus(cx, FORM_INPUTS[f.focus])
 	else
-		if f.focus == "short" and shortLocked(state, f) then
-			return false
-		end
 		local fld = (f :: any)[f.focus] :: Field
 		local changed = fedit(fld, key)
 		if not changed then
@@ -1017,25 +1122,52 @@ local function formKey(state: State, f: Form, key: Key, cx: BlockCx): boolean
 	return true
 end
 
-local function chooseSituation(state: State, id: string)
-	local p = find(state, state.current)
-	if not p or not situation(state, id) then
-		return
-	end
-	if state.changing and p.workflow and p.workflow ~= id then
-		local done = 0
-		for _ in steps(p) do
-			done += 1
-		end
+-- Moves the problem to another workflow. The old checklist goes to the history. With carry (the
+-- fork after the grill), steps of the new workflow with a skill already done stay done.
+local function switchWorkflow(state: State, p: any, id: string, carry: boolean)
+	if p.workflow and p.workflow ~= id then
 		local old = situation(state, p.workflow)
+		local doneBySkill: { [string]: any } = {}
+		local count = 0
+		for k, at in steps(p) do
+			count += 1
+			local st = old and old.steps[tonumber(k) or 0]
+			if st and st.skill and not doneBySkill[st.skill] then
+				doneBySkill[st.skill] = at
+			end
+		end
 		p.history = p.history or {}
-		table.insert(p.history, { workflow = p.workflow, label = if old then old.label else p.workflow, done = done, until_ = now(), steps = p.steps })
+		table.insert(p.history, { workflow = p.workflow, label = if old then old.label else p.workflow, done = count, until_ = now(), steps = p.steps })
 		p.steps = {}
+		local new = situation(state, id)
+		if carry and new then
+			for i, st in new.steps do
+				if st.skill and doneBySkill[st.skill] and not st.auto then
+					p.steps[tostring(i)] = doneBySkill[st.skill]
+					doneBySkill[st.skill] = nil
+				end
+			end
+		end
 	end
 	p.workflow = id
 	touch(state, p)
 	state.changing = false
 	state.screen = "workflow"
+end
+
+local function chooseSituation(state: State, id: string)
+	local p = find(state, state.current)
+	if not p or not situation(state, id) then
+		return
+	end
+	if state.changing then
+		switchWorkflow(state, p, id, false)
+	else
+		p.workflow = id
+		touch(state, p)
+		state.changing = false
+		state.screen = "workflow"
+	end
 end
 
 local function link(state: State, pane: number)
@@ -1083,8 +1215,7 @@ local board: BlockDef<State> = {
 			layer = nil,
 			form = nil,
 			confirm = nil,
-			tracker = "local",
-			domain = "single",
+			candidates = {},
 			flows = {},
 			flowsSource = "",
 			all = {},
@@ -1124,6 +1255,8 @@ local board: BlockDef<State> = {
 			layer = linkView(state, p)
 		elseif state.layer == "confirm" then
 			layer = confirmView(state)
+		elseif state.layer == "pickfolder" then
+			layer = pickFolderView(state)
 		end
 		return { main = main, layer = if layer then ui.col({ layer }) else nil }
 	end,
@@ -1160,6 +1293,7 @@ local board: BlockDef<State> = {
 			if p then
 				steps(p)[tostring(ev.value)] = if ev.checked then now() else nil
 				touch(state, p)
+				discover(state, p)
 			end
 			return
 		end
@@ -1181,6 +1315,9 @@ local board: BlockDef<State> = {
 			loadProblems(state)
 		elseif act == "refresh" then
 			refresh(state)
+			if p then
+				discover(state, p)
+			end
 		elseif act == "secopen" then
 			local f = findSecret(state, tostring(value))
 			if f then
@@ -1206,7 +1343,10 @@ local board: BlockDef<State> = {
 		elseif act == "open" then
 			openProblem(state, tostring(value or ev.item))
 		elseif act == "openfile" and p then
-			cx:open(join(folderPath(state, p.id), tostring(value)))
+			local d = folderOf(state, p)
+			if d then
+				cx:open(join(folderPath(state, d), tostring(value)))
+			end
 		elseif act == "archive" then
 			loadProblems(state)
 			state.screen = "archive"
@@ -1214,24 +1354,48 @@ local board: BlockDef<State> = {
 			state.layer = "setup"
 		elseif act == "closelayer" then
 			state.layer, state.confirm, state.form = nil, nil, nil
-		elseif act == "tracker" then
-			state.tracker = tostring(value)
-		elseif act == "domain" then
-			state.domain = tostring(value)
 		elseif act == "copyinstall" then
 			copyText(cx, "npx skills@latest add mattpocock/skills -g -a codex", nil)
-		elseif act == "copygh" then
-			copyText(cx, ghLabels(), nil)
+		elseif act == "copylabels" then
+			copyText(cx, labelCommands(tostring(value)), nil)
 		elseif act == "copysetup" then
-			copyText(cx, setupPrompt(state), p and p.session, ev.window)
+			copyText(cx, SETUP_PROMPT, p and p.session, ev.window)
 		elseif act == "copystep" and p then
 			local s = situation(state, p.workflow)
 			local st = s and s.steps[tonumber(value) or 0]
 			if st and st.prompt then
-				copyText(cx, fill(p, st.prompt), p.session, ev.window)
+				copyText(cx, fill(state, p, st.prompt), p.session, ev.window)
 			end
 		elseif act == "copyskill" and p then
 			copyText(cx, "/skill:" .. tostring(ev.item) .. " ", p.session, ev.window)
+		elseif act == "detour" and p then
+			local g, j = string.match(tostring(value), "^(.-):(%d+)$")
+			local group = g and state.flows.detours and state.flows.detours[g]
+			local d = type(group) == "table" and group[tonumber(j) or 0]
+			if d and d.prompt then
+				copyText(cx, fill(state, p, d.prompt), p.session, ev.window)
+			end
+		elseif act == "fork" and p then
+			local id, j = string.match(tostring(value), "^(.-):(%d+)$")
+			local fk = id and state.flows.forks and state.flows.forks[id]
+			local o = type(fk) == "table" and fk.options[tonumber(j) or 0]
+			if o then
+				if o.prompt then
+					copyText(cx, fill(state, p, o.prompt), p.session, ev.window)
+				end
+				if o.to ~= p.workflow and situation(state, o.to) then
+					switchWorkflow(state, p, o.to, true)
+					if not o.prompt then
+						cx:toast("info", "Workflow cambiato", tostring(o.label))
+					end
+				end
+			end
+		elseif act == "pickfolder" then
+			state.layer = "pickfolder"
+		elseif act == "setfolder" and p then
+			p.folder = tostring(value)
+			touch(state, p)
+			state.candidates, state.layer = {}, nil
 		elseif act == "linkopen" then
 			state.layer = "link"
 		elseif act == "link" then
@@ -1246,7 +1410,7 @@ local board: BlockDef<State> = {
 			p.status = "archived"
 			touch(state, p)
 			state.screen, state.current = "home", nil
-			cx:toast("info", "Problema archiviato", if folder(state, p.id) then "La cartella .scratch/" .. p.id .. "/ resta dov'è" else nil)
+			cx:toast("info", "Problema archiviato", if folderOf(state, p) then "La cartella in .scratch/ resta dov'è" else nil)
 		elseif act == "restore" then
 			local q = find(state, tostring(value or ev.item))
 			if q then
@@ -1257,9 +1421,11 @@ local board: BlockDef<State> = {
 			state.confirm, state.layer = tostring(value or ev.item), "confirm"
 		elseif act == "delete" and state.confirm then
 			local id = state.confirm :: string
+			local q = find(state, id)
+			local d = q and folderOf(state, q)
 			local ok, err = true, nil
-			if value == "folder" and folder(state, id) then
-				ok, err = pcall(tern.fs.remove, folderPath(state, id))
+			if value == "folder" and d then
+				ok, err = pcall(tern.fs.remove, folderPath(state, d))
 			end
 			if ok then
 				for i, q in state.all do
@@ -1272,7 +1438,7 @@ local board: BlockDef<State> = {
 			end
 			state.layer, state.confirm = nil, nil
 			if ok then
-				cx:toast("success", "Eliminato", if value == "folder" then "Problema e .scratch/" .. id .. "/" else "Problema; la cartella resta")
+				cx:toast("success", "Eliminato", if value == "folder" and d then "Problema e .scratch/" .. d .. "/" else "Problema; la cartella resta")
 			else
 				cx:toast("error", "Eliminazione non riuscita", tostring(err))
 			end

@@ -1,3 +1,10 @@
+0.6.0 - [18/11/2026]
+    - INCOMPATIBILE: il plugin ripropone solo le indicazioni di Matt Pocock. I prompt sono come li scrive lui (/skill:to-spec, /skill:to-tickets, /skill:implement 01, /skill:wayfinder senza percorsi); le note, i passi e le cose da decidere sono corretti sui suoi documenti; aggiunti retro, pr e code-review dove li prevede (file: workflows.json)
+    - Il nome breve non è più la cartella: le skill scelgono la cartella in .scratch/ e il blocco la ritrova dopo un passo e la collega al problema; con più cartelle nuove chiede quale (file: host.luau)
+    - Tra un passo e l'altro le indicazioni di Matt sulla sessione (continua, /clear, sessione nuova), il prossimo passo evidenziato, l'avviso «rileggi la spec» prima di to-tickets, le deviazioni durante il grill (prototype, to-questionnaire, research) e il bivio dopo il grill: una sessione, più sessioni, strada non chiara (file: host.luau, workflows.json)
+    - «Configura repo» copia solo /skill:setup-matt-pocock-skills, che esplora il repo e chiede; il pulsante delle etichette copia anche bug, enhancement e wayfinder:*, per gh e per glab (file: host.luau)
+    - Le skill che l'agente usa da sola si possono anche copiare; la data dei passi fatti è più corta (file: host.luau)
+
 0.5.1 - [17/11/2026]
     - Corretta la versione mostrata nella Home: diceva 0.4.0 invece della versione installata (file: host.luau)
     - Aggiunta ROADMAP.md con i passi fatti e i prossimi, verificati sul codice e sulle skill installate; è l'unica roadmap del progetto e le istruzioni per gli agenti chiedono di tenerla aggiornata

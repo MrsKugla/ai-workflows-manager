@@ -1,6 +1,6 @@
 # Roadmap
 
-Stato verificato il 17/11/2026 sul codice della 0.5.1, su Tern 0.9.26 e sulle 27 skill di `mattpocock/skills` installate in `~/.agents/skills`.
+Stato verificato il 18/11/2026 sul codice della 0.6.0, su Tern 0.9.26 e sulle 27 skill di `mattpocock/skills` installate in `~/.agents/skills`.
 
 ## Fatto
 
@@ -8,58 +8,55 @@ Stato verificato il 17/11/2026 sul codice della 0.5.1, su Tern 0.9.26 e sulle 27
 |---|---|---|
 | F1 · Workflow | 0.1.0–0.3.0 | Home dei problemi, 11 situazioni, checklist dei passi, copia di `/skill:<nome>` negli appunti, sessione omp collegata, «Configura repo», archivio, problemi in `.ai-workflows/problems.json` |
 | Controllo dei segreti | 0.4.0 | Fascia «Possibili segreti» su `.scratch/` e `problems.json`, con «Apri» e «Ignora». Solo avviso: non blocca il commit |
-| Pubblicazione | 0.5.0 | Nome `ai-workflows-manager`, cartella `.ai-workflows/`, README con crediti, licenza MIT |
+| Pubblicazione | 0.5.0–0.5.1 | Nome `ai-workflows-manager`, cartella `.ai-workflows/`, README con crediti, licenza MIT, ROADMAP.md; pubblicato su GitHub il 17/11 |
+| Prova su un repo vero (T3) | 18/11 | Setup, grill, `to-spec`, `to-tickets` in `Tools/ai-workflows-example`. Risultati: la cartella in `.scratch/` la sceglie la skill anche se il prompt la indica; i ticket hanno `**Blocked by:**` e `**Status:**` in grassetto; `to-tickets` considera approvate le regole aggiunte da `to-spec` se non rispondi |
+| Plugin fedele a Matt | 0.6.0 | Controllo una tantum contro i documenti di [mattpocock/skills](https://github.com/mattpocock/skills/tree/main/docs): prompt come li scrive Matt; note, passi e decisioni corretti; indicazioni sulla sessione tra un passo e l'altro (continua, `/clear`, sessione nuova); prossimo passo evidenziato; avviso «rileggi la spec» prima di `to-tickets`; deviazioni durante il grill (`prototype`, `to-questionnaire`, `research`); bivio dopo il grill (una sessione, più sessioni, strada non chiara → `handoff` verso `wayfinder`); cartella `.scratch/` ritrovata dopo il passo; «Configura repo» che copia solo il comando; etichette di riserva per `gh` e `glab` |
 
 ## Prossimi passi, in ordine
 
-### 1. Prova su un repo vero (T3)
+### 1. Prossima prova
 
-In un repo di prova: «Configura repo» → `/skill:setup-matt-pocock-skills` con tracker «Local markdown», poi una spec (`to-spec`) e tre ticket (`to-tickets`). Serve come banco di prova per la F2: oggi nessun repo ha ticket locali.
+- Su un repo GitHub: `setup` crea le etichette? Se sì, togli dal pulsante di riserva le cinque di triage.
+- Prova il bivio «Strada non chiara»: il testo copiato (`/skill:handoff per continuare con /wayfinder: …`) porta davvero a `wayfinder`?
+- Prova `implement 01` sui ticket di `ai-workflows-example` (serve `git init` nella cartella).
 
 ### 2. Interfaccia nel pane stretto (critica UI della 0.2.0)
 
-Dieci problemi ancora aperti nel pane da 68 colonne; «1 passi» è già corretto nella 0.3.0.
+Otto problemi ancora aperti nel pane da 68 colonne. Corretti: «1 passi» (0.3.0), prossimo passo evidenziato e data corta (0.6.0).
 
 - **Bloccano o confondono (P1)**
-  - La barra della Home non ci sta: «Aggiorna» è tagliato.
+  - La barra della Home non ci sta: «Aggiorna» e «Archivio» sono tagliati.
   - Le colonne Workflow e Sessione spariscono: un problema senza workflow non dice cosa fare.
-  - Il prossimo passo da fare non si distingue dagli altri.
   - Nella scelta della situazione la colonna «Quando» è nascosta: restano solo i titoli.
 - **Rallentano (P2)**
   - «Apri» primario su ogni riga compete con «Nuovo problema».
   - La testata della Home occupa un terzo del pane.
   - «Collega» sembra l'azione principale del workflow.
   - Il pulsante «Configura repo» nel passo 1 allarga la colonna.
+  - In «Configura repo» la scritta «Installate in ~/.agents/skills» va a capo su quattro righe.
 - **Rifiniture (P3)**
-  - La data «fatto 2026-11-14 21:01» è troppo lunga.
   - Il pulsante 📋 ha solo l'icona.
 
 ### 3. F2 · Ticket e roadmap
 
 Legge il formato del tracker locale delle skill, senza modificarlo:
 
-- un file per ticket in `.scratch/<nome>/issues/NN-<slug>.md`, con le righe `Status:` e `Blocked by:`;
+- un file per ticket in `.scratch/<nome>/issues/NN-<slug>.md`, con le righe `Status:` e `Blocked by:` in tutte e due le forme che le skill scrivono (in grassetto da `to-tickets`, semplici da `wayfinder`), e «None»;
 - la mappa in `.scratch/<nome>/map.md` (scritta da `wayfinder`).
 
 Viste:
 
-- **Navigatore**: elenco a sinistra (numero, titolo, stato, blocchi) e dettaglio a destra. Azioni: Modifica (editor di Tern), Stato (cambia la riga `Status:`), Implementa (copia `/skill:implement <file del ticket>`).
-- **Roadmap**: calcolata dai ticket, con corsie Bloccati / Pronti / In corso / Fatti e barra di avanzamento.
+- **Navigatore**: elenco a sinistra (numero, titolo, stato, blocchi) e dettaglio a destra. Azioni: Modifica (editor di Tern), Stato (valori presi da `docs/agents/triage-labels.md`; sui ticket di `to-tickets` niente `needs-triage`/`needs-info`), Implementa (copia `/skill:implement <NN>`, segnala i ticket bloccati). Sui ticket di wayfinder (riga `Type:`) niente Implementa: sono decisioni. Sulla spec: «Implementa tutta la spec» (`/skill:implement-spec`).
+- **Grafo dei ticket** (approvato il 18/11, sostituisce le corsie): un riquadro per ticket, frecce dalle righe `Blocked by:`, colori dalle righe `Status:` (fatto, pronto per l'agente, serve una persona o mancano info, bloccato, wontfix). Immagine SVG nel blocco tramite `cx:blob` (verificato con T5); le azioni stanno nell'elenco accanto. I ticket di wayfinder hanno una forma diversa. Uno stato fuori dall'elenco di Matt si mostra come «stato non standard».
+- **Da decidere:** come si segna un ticket «fatto», perché Matt non ha uno stato finale. A: `Status: done`, con la regola in `docs/agents/issue-tracker.md`. B: il file va in `issues/done/`.
 
 Con un repo su GitHub il blocco mostra «Tracker: GitHub» e il link alle issue, senza roadmap.
 
 ### 4. F3 · Conoscenza
 
-Vista di sola lettura su `docs/adr/` (in ordine di numero) e su `GLOSSARY.md`, con ricerca. Nei repo con più contesti legge `GLOSSARY-MAP.md` e `src/<contesto>/docs/adr/`.
+Vista di sola lettura su `docs/adr/` (in ordine di numero) e su `GLOSSARY.md`, con ricerca. Nei repo con più contesti legge `GLOSSARY-MAP.md` e `src/<contesto>/docs/adr/`; legge anche i vecchi `CONTEXT.md` / `CONTEXT-MAP.md`. Se i file non esistono mostra uno stato vuoto, senza invitare a crearli (Matt: «Don't flag their absence»).
 
-### 5. F4 · Grill interattivo
-
-- Prima si scrive un'istruzione per l'`AGENTS.md` del repo (T6): ogni domanda del grill va anche in `.scratch/<nome>/grill.json`, con domanda, contesto, opzioni, opzione consigliata e figura facoltativa.
-- Il blocco mostra una card per domanda, con radio e note.
-- «Copia risposte» mette negli appunti il riassunto da incollare all'agente.
-- Le figure sono PNG o SVG: la prova T5 conferma che il blocco li mostra.
-
-### 6. F5 · Ticket GitHub in sola lettura
+### 5. F5 · Ticket GitHub in sola lettura
 
 Come la F2, ma legge le issue con `gh`. Richiede l'installazione di `gh`.
 
@@ -68,3 +65,7 @@ Come la F2, ma legge le issue con `gh`. Richiede l'installazione di `gh`.
 - Scorciatoia da tastiera per aprire il blocco (`tern.bind` in `window.luau`): i tasti sono da scegliere.
 - Editor visuale per `.ai-workflows/workflows.json`: oggi si modifica il JSON.
 - Blocco dei commit con segreti (hook pre-commit): scartato per ora, il controllo resta un avviso.
+
+## Idee archiviate
+
+- **Grill interattivo (ex F4, punti C4 e C5)**, archiviato il 17/11/2026: card, `grill.json`, `grill.md` o questionario HTML per rispondere alle domande del grill. Matt Pocock esclude in modo esplicito le interfacce strutturate per il grill ([native-question-tool.md](https://github.com/mattpocock/skills/blob/main/.out-of-scope/native-question-tool.md)): le domande restano testo in chat e le decisioni passano a `to-spec` nella stessa conversazione.
