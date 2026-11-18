@@ -1,3 +1,6 @@
+0.6.2 - [18/11/2026]
+    - Conferma di eliminazione più chiara: «La cancellazione è irreversibile», e con una cartella «i file tornano solo da un commit git»; tolta la riga vuota (file: host.luau)
+
 0.6.1 - [18/11/2026]
     - Dopo il bivio «Strada non chiara» il prompt di wayfinder chiede di leggere prima il file di handoff, e lo stesso fa il prompt di prototype: Matt fa ripartire la sessione nuova da quel file. Il percorso lo stampa l'agente e lo incolli tu (file: host.luau, workflows.json)
     - Avviso del workflow wayfinder riscritto in parole semplici: wayfinder decide, non programma (file: workflows.json)

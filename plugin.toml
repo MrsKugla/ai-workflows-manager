@@ -1,7 +1,7 @@
 schema = 1
 id = "ai-workflows-manager"
 name = "AI Workflows"
-version = "0.6.1"
+version = "0.6.2"
 description = "Guida i workflow delle skill di Matt Pocock: situazione, passi, ticket locali, ADR e grill."
 icon = "list-checks"
 host = "host.luau"

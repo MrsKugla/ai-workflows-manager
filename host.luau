@@ -9,7 +9,7 @@
 local ui = tern.ui
 local Secrets = require("./secrets")
 
-local VERSION = "0.6.1"
+local VERSION = "0.6.2"
 local AGENTS_KEY = "agents"
 local SCAN_EVERY_MS = 3000
 local SHORT_MAX = 40
@@ -687,7 +687,7 @@ local function confirmView(state: State): Node?
 	if f then
 		table.insert(buttons, ui.button("Problema e cartella", { key = "all", variant = "danger", actions = { click = "delete=folder" } }))
 	end
-	return ui.node("overlay", { key = "confirm", head = "Eliminare «" .. p.title .. "»?", icon = "trash", size = if f then "md" else "sm", modal = true, foot = "layer.confirm.foot" }, {
+	local body: { Node } = {
 		line("t", {
 			ui.span(
 				if f and d
@@ -696,10 +696,13 @@ local function confirmView(state: State): Node?
 				"muted"
 			),
 		}),
-		if f then line("m", { ui.span("Matt butta la spec dopo la consegna; se cambi direzione tiene la spec e cancella solo i ticket non finiti.", "muted") }) else line("m", {}),
-		line("g", { ui.span("Senza git la cancellazione non si annulla.", "muted") }),
-		keyed(ui.row(buttons), "foot"),
-	})
+	}
+	if f then
+		table.insert(body, line("m", { ui.span("Matt butta la spec dopo la consegna; se cambi direzione tiene la spec e cancella solo i ticket non finiti.", "muted") }))
+	end
+	table.insert(body, line("g", { ui.span(if f then "La cancellazione è irreversibile: i file tornano solo da un commit git." else "La cancellazione è irreversibile.", "muted") }))
+	table.insert(body, keyed(ui.row(buttons), "foot"))
+	return ui.node("overlay", { key = "confirm", head = "Eliminare «" .. p.title .. "»?", icon = "trash", size = if f then "md" else "sm", modal = true, foot = "layer.confirm.foot" }, body)
 end
 
 -- B5: red band with the possible secrets; nothing is changed or blocked.
