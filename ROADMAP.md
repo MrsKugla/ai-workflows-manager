@@ -1,6 +1,6 @@
 # Roadmap
 
-Stato verificato il 18/11/2026 sul codice della 0.6.0, su Tern 0.9.26 e sulle 27 skill di `mattpocock/skills` installate in `~/.agents/skills`.
+Stato verificato il 18/11/2026 sul codice della 0.6.2, su Tern 0.9.26 e sulle 27 skill di `mattpocock/skills` installate in `~/.agents/skills`.
 
 ## Fatto
 
@@ -11,39 +11,16 @@ Stato verificato il 18/11/2026 sul codice della 0.6.0, su Tern 0.9.26 e sulle 27
 | Pubblicazione | 0.5.0–0.5.1 | Nome `ai-workflows-manager`, cartella `.ai-workflows/`, README con crediti, licenza MIT, ROADMAP.md; pubblicato su GitHub il 17/11 |
 | Prova su un repo vero (T3) | 18/11 | Setup, grill, `to-spec`, `to-tickets` in `Tools/ai-workflows-example`. Risultati: la cartella in `.scratch/` la sceglie la skill anche se il prompt la indica; i ticket hanno `**Blocked by:**` e `**Status:**` in grassetto; `to-tickets` considera approvate le regole aggiunte da `to-spec` se non rispondi |
 | Plugin fedele a Matt | 0.6.0 | Controllo una tantum contro i documenti di [mattpocock/skills](https://github.com/mattpocock/skills/tree/main/docs): prompt come li scrive Matt; note, passi e decisioni corretti; indicazioni sulla sessione tra un passo e l'altro (continua, `/clear`, sessione nuova); prossimo passo evidenziato; avviso «rileggi la spec» prima di `to-tickets`; deviazioni durante il grill (`prototype`, `to-questionnaire`, `research`); bivio dopo il grill (una sessione, più sessioni, strada non chiara → `handoff` verso `wayfinder`); cartella `.scratch/` ritrovata dopo il passo; «Configura repo» che copia solo il comando; etichette di riserva per `gh` e `glab` |
+| Prossima prova | 0.6.1 | In `Tools/ai-workflows-example`: `implement 01` scrive il codice senza commit (il ticket lo chiudi tu, vedi F2); il bivio «Strada non chiara» passa a `wayfinder` e il passo 2 chiede di leggere prima il file di handoff |
+| F2 · Ticket e grafo | 0.7.0 | Schermata «Ticket» dal workflow: grafo SVG (riquadro = `to-tickets`, ovale = `wayfinder`, frecce da `Blocked by:`, colori da `Status:`), elenco e dettaglio. Modifica apre il file; la casella «fatto» scrive `Status: done` e avvisa se restano criteri non spuntati; stati presi da `docs/agents/triage-labels.md`; Implementa copia `/skill:implement NN` e avvisa se il ticket è bloccato; «Implementa tutta la spec». I ticket di wayfinder non hanno Implementa. Legge le righe in grassetto e semplici; scrive solo `Status:` |
 
 ## Prossimi passi, in ordine
 
-### 1. Prossima prova
-
-- Su un repo GitHub: `setup` crea le etichette? Se sì, togli dal pulsante di riserva le cinque di triage.
-- Prova il bivio «Strada non chiara»: il testo copiato (`/skill:handoff per continuare con /wayfinder: …`) porta davvero a `wayfinder`? Fatto il 18/11: sì, `handoff` scrive il file in `%TEMP%` e indica `/wayfinder` come passo successivo; il workflow passa a «Iniziativa enorme e incerta». Il buco trovato (il passo `wayfinder` non diceva di leggere il file di handoff) è corretto nella 0.6.1: da verificare copiando il passo 2.
-- Prova `implement 01` sui ticket di `ai-workflows-example` (serve `git init` nella cartella). Fatto il 18/11: il codice c'è, senza commit; il ticket 01 l'ha chiuso l'agente per una regola che avevo fatto aggiungere io in `issue-tracker.md`, poi tolta (vedi F2, «Chiudere un ticket»).
-
-### 2. F2 · Ticket e roadmap
-
-Legge il formato del tracker locale delle skill, senza modificarlo:
-
-- un file per ticket in `.scratch/<nome>/issues/NN-<slug>.md`, con le righe `Status:` e `Blocked by:` in tutte e due le forme che le skill scrivono (in grassetto da `to-tickets`, semplici da `wayfinder`), e «None»;
-- la mappa in `.scratch/<nome>/map.md` (scritta da `wayfinder`).
-
-Viste:
-
-- **Navigatore**: elenco a sinistra (numero, titolo, stato, blocchi) e dettaglio a destra. Azioni: Modifica (editor di Tern), Stato (valori presi da `docs/agents/triage-labels.md`; sui ticket di `to-tickets` niente `needs-triage`/`needs-info`), Implementa (copia `/skill:implement <NN>`, segnala i ticket bloccati). Sui ticket di wayfinder (riga `Type:`) niente Implementa: sono decisioni. Sulla spec: «Implementa tutta la spec» (`/skill:implement-spec`).
-- **Grafo dei ticket** (approvato il 18/11, sostituisce le corsie): un riquadro per ticket, frecce dalle righe `Blocked by:`, colori dalle righe `Status:` (fatto, pronto per l'agente, serve una persona o mancano info, bloccato, wontfix). Immagine SVG nel blocco tramite `cx:blob` (verificato con T5); le azioni stanno nell'elenco accanto. I ticket di wayfinder hanno una forma diversa. Uno stato fuori dall'elenco di Matt si mostra come «stato non standard».
-- **Chiudere un ticket** (decisione del 18/11): Matt scrive «implement non chiude il ticket: chiudilo tu e spunta i criteri» ([implement.md](https://github.com/mattpocock/skills/blob/main/docs/engineering/implement.md)), ma per il tracker locale non dice come e non ha uno stato finale. Nel navigatore ogni ticket ha una casella «fatto»: la spunti tu e il plugin scrive `Status: done` nel file. Nessuna regola in `issue-tracker.md`: il ticket non lo chiude l'agente.
-
-Con un repo su GitHub il blocco mostra «Tracker: GitHub» e il link alle issue, senza roadmap.
-
-### 3. F3 · Conoscenza
+### 1. F3 · Conoscenza
 
 Vista di sola lettura su `docs/adr/` (in ordine di numero) e su `GLOSSARY.md`, con ricerca. Nei repo con più contesti legge `GLOSSARY-MAP.md` e `src/<contesto>/docs/adr/`; legge anche i vecchi `CONTEXT.md` / `CONTEXT-MAP.md`. Se i file non esistono mostra uno stato vuoto, senza invitare a crearli (Matt: «Don't flag their absence»).
 
-### 4. F5 · Ticket GitHub in sola lettura
-
-Come la F2, ma legge le issue con `gh`. Richiede l'installazione di `gh`.
-
-### 5. Interfaccia nel pane stretto (critica UI della 0.2.0)
+### 2. Interfaccia nel pane stretto (critica UI della 0.2.0)
 
 In fondo, dopo le fasi che cambiano le schermate (decisione del 18/11): sistemare prima la UI vorrebbe dire rifarla. Restano le correzioni urgenti di struttura, quando servono.
 
@@ -61,6 +38,16 @@ Otto problemi ancora aperti nel pane da 68 colonne. Corretti: «1 passi» (0.3.0
   - In «Configura repo» la scritta «Installate in ~/.agents/skills» va a capo su quattro righe.
 - **Rifiniture (P3)**
   - Il pulsante 📋 ha solo l'icona.
+- **Grafo dei ticket (F2)**
+  - Titoli tagliati a circa 20 caratteri («Quale formato pe…»). Richiesta del 18/11: il riquadro diventa più alto e il titolo va a capo; se servirebbero più di 3 righe, il riquadro si allarga un po' per stare in 2, al massimo 3.
+
+### 3. GitHub: F5 e prova del tracking
+
+Ultimo passo: per ora le prove si fanno solo con il tracker locale (decisione del 18/11).
+
+- **F5 · Ticket GitHub in sola lettura**: come la F2, ma legge le issue con `gh`. Richiede l'installazione di `gh`.
+- `setup` crea le etichette? Se sì, togli dal pulsante di riserva le cinque di triage.
+- Con un repo su GitHub il blocco mostra «Tracker: GitHub» e il link alle issue, al posto della schermata «Ticket».
 
 ## Idee non pianificate
 

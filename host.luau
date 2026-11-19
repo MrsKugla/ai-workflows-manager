@@ -9,7 +9,7 @@
 local ui = tern.ui
 local Secrets = require("./secrets")
 
-local VERSION = "0.6.2"
+local VERSION = "0.7.0"
 local AGENTS_KEY = "agents"
 local SCAN_EVERY_MS = 3000
 local SHORT_MAX = 40
@@ -28,13 +28,15 @@ type Form = {
 
 type State = {
 	dir: string,
-	screen: string, -- "home" | "situation" | "workflow" | "archive"
+	screen: string, -- "home" | "situation" | "workflow" | "tickets" | "archive"
 	current: string?, -- id of the open problem
 	changing: boolean, -- situation screen opened by «Cambia workflow»
 	layer: string?, -- "form" | "link" | "setup" | "confirm" | "pickfolder"
 	form: Form?,
 	confirm: string?, -- id to delete
 	candidates: { string }, -- .scratch/ folders the open problem could own, when more than one
+	tickets: { Ticket }, -- F2: tickets of the open problem's folder, read on demand
+	ticket: string?, -- file of the selected ticket
 	flows: any,
 	flowsSource: string,
 	all: { any },
@@ -397,6 +399,302 @@ local function discover(state: State, p: any)
 	else
 		state.candidates = list
 	end
+end
+
+-- F2: the local tracker as the skills write it (setup-matt-pocock-skills/issue-tracker-local.md). One file
+-- per ticket in .scratch/<folder>/issues/NN-<slug>.md; `Status:` and `Blocked by:` lines in bold
+-- (to-tickets) or plain (wayfinder); wayfinder tickets carry a `Type:` line. Only `Status:` is ever written.
+
+export type Ticket = {
+	file: string,
+	n: number,
+	num: string,
+	title: string,
+	status: string?,
+	blockers: { number },
+	kind: string?, -- wayfinder ticket type; nil for to-tickets tickets
+	done: number,
+	total: number,
+	text: string,
+}
+
+local function headerField(text: string, name: string): string?
+	for l in string.gmatch(text, "[^\r\n]+") do
+		local v = string.match(l, "^%*%*" .. name .. ":%*%*%s*(.-)%s*$") or string.match(l, "^" .. name .. ":%s*(.-)%s*$")
+		if v then
+			return v
+		end
+	end
+	return nil
+end
+
+-- «01: Add e List», «01, 02», «None (can start immediately)».
+local function parseBlockers(v: string?): { number }
+	local out: { number } = {}
+	if not v or string.match(string.lower(v), "^none") then
+		return out
+	end
+	for n in string.gmatch(v, "(%d+)%s*:") do
+		table.insert(out, tonumber(n) :: number)
+	end
+	if #out == 0 then
+		for n in string.gmatch(v, "%d+") do
+			table.insert(out, tonumber(n) :: number)
+		end
+	end
+	return out
+end
+
+local function issuesDir(state: State, d: string): string
+	return join(folderPath(state, d), "issues")
+end
+
+local function loadTickets(state: State, p: any)
+	state.tickets = {}
+	local d = folderOf(state, p)
+	local ok, names = pcall(tern.fs.list, if d then issuesDir(state, d) else "")
+	if not d or not ok then
+		return
+	end
+	table.sort(names)
+	for _, name in names do
+		local num = string.match(name, "^(%d+)[^/\\]*%.md$")
+		local okr, text = pcall(tern.fs.read, join(issuesDir(state, d), name), 1024 * 1024)
+		if num and okr then
+			local t: Ticket = {
+				file = name,
+				n = tonumber(num) :: number,
+				num = num,
+				title = trim(string.match(text, "^#%s*([^\r\n]+)") or string.match(text, "\n#%s*([^\r\n]+)") or name),
+				status = headerField(text, "Status"),
+				blockers = parseBlockers(headerField(text, "Blocked by")),
+				kind = headerField(text, "Type"),
+				done = 0,
+				total = 0,
+				text = text,
+			}
+			for mark in string.gmatch(text, "\n%s*[-*] %[([ xX])%]") do
+				t.total += 1
+				if mark ~= " " then
+					t.done += 1
+				end
+			end
+			table.insert(state.tickets, t)
+		end
+	end
+	local keep = false
+	for _, t in state.tickets do
+		keep = keep or t.file == state.ticket
+	end
+	if not keep then
+		state.ticket = if #state.tickets > 0 then state.tickets[1].file else nil
+	end
+end
+
+local function ticketByFile(state: State, file: string?): Ticket?
+	for _, t in state.tickets do
+		if t.file == file then
+			return t
+		end
+	end
+	return nil
+end
+
+-- Rewrites only the first Status line, keeping its bold or plain form; adds one under the title if missing.
+local function writeStatus(path: string, value: string): (boolean, string?)
+	local ok, text = pcall(tern.fs.read, path, 1024 * 1024)
+	if not ok then
+		return false, tostring(text)
+	end
+	local safe = (string.gsub(value, "%%", "%%%%"))
+	local out, n = string.gsub(text, "(\n%*%*Status:%*%*)[^\r\n]*", "%1 " .. safe, 1)
+	if n == 0 then
+		out, n = string.gsub(text, "(\nStatus:)[^\r\n]*", "%1 " .. safe, 1)
+	end
+	if n == 0 then
+		out, n = string.gsub(text, "^(#[^\r\n]*\r?\n)", "%1\nStatus: " .. safe .. "\n", 1)
+	end
+	if n == 0 then
+		out = "Status: " .. value .. "\n\n" .. text
+	end
+	local okw, err = pcall(tern.fs.write, path, out)
+	return okw, if okw then nil else tostring(err)
+end
+
+-- Role → label of this repo (docs/agents/triage-labels.md, column «Label in our tracker»).
+local function triageLabels(state: State): { [string]: string }
+	local m: { [string]: string } = {}
+	for _, r in { "needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix" } do
+		m[r] = r
+	end
+	local ok, text = pcall(tern.fs.read, join(state.dir, "docs", "agents", "triage-labels.md"), 64 * 1024)
+	if ok then
+		for role, label in string.gmatch(text, "|%s*`([%w%-]+)`%s*|%s*`([^`]+)`") do
+			if m[role] then
+				m[role] = label
+			end
+		end
+	end
+	return m
+end
+
+local function finished(t: Ticket?): boolean
+	local s = t and t.status and string.lower(t.status) or ""
+	return s == "done" or s == "resolved"
+end
+
+-- Open blockers of `t` (numbers), by the rule of issue-tracker-local.md.
+local function openBlockers(state: State, t: Ticket): { number }
+	local out = {}
+	for _, b in t.blockers do
+		local found: Ticket? = nil
+		for _, o in state.tickets do
+			if o.n == b then
+				found = o
+			end
+		end
+		if not finished(found) then
+			table.insert(out, b)
+		end
+	end
+	return out
+end
+
+type Look = { label: string, tone: string, fill: string }
+
+local function look(state: State, t: Ticket): Look
+	local labels = triageLabels(state)
+	local s = string.lower(t.status or "")
+	if s == "done" then
+		return { label = "fatto", tone = "success", fill = "#2f7d52" }
+	elseif s == "resolved" then
+		return { label = "risolto", tone = "success", fill = "#2f7d52" }
+	elseif s == "wontfix" or s == string.lower(labels.wontfix) then
+		return { label = "wontfix", tone = "muted", fill = "#4b505a" }
+	elseif #openBlockers(state, t) > 0 then
+		return { label = "bloccato", tone = "muted", fill = "#363b45" }
+	elseif s == "claimed" then
+		return { label = "in corso", tone = "info", fill = "#6a52c4" }
+	elseif s == "" and t.kind then
+		return { label = "aperto", tone = "info", fill = "#2d63c8" }
+	elseif s == string.lower(labels["ready-for-agent"]) then
+		return { label = "pronto per l'agente", tone = "info", fill = "#2d63c8" }
+	elseif s == string.lower(labels["ready-for-human"]) then
+		return { label = "serve una persona", tone = "warning", fill = "#b5761a" }
+	elseif s == string.lower(labels["needs-info"]) then
+		return { label = "mancano info", tone = "warning", fill = "#b5761a" }
+	elseif s == string.lower(labels["needs-triage"]) then
+		return { label = "da valutare", tone = "warning", fill = "#b5761a" }
+	end
+	return { label = if s == "" then "senza stato" else "stato non standard: " .. tostring(t.status), tone = "error", fill = "#a3407f" }
+end
+
+local function xml(s: string): string
+	return (string.gsub(s, "[&<>\"]", { ["&"] = "&amp;", ["<"] = "&lt;", [">"] = "&gt;", ['"'] = "&quot;" }))
+end
+
+local function clip(s: string, max: number): string
+	if (utf8.len(s) or 0) <= max then
+		return s
+	end
+	return string.sub(s, 1, (utf8.offset(s, max) or (#s + 1)) - 1) .. "…"
+end
+
+-- Ticket graph: columns by dependency depth, arrows from `Blocked by:`, colours from `Status:`.
+local GRAPH_BW, GRAPH_BH, GRAPH_GX, GRAPH_GY, GRAPH_PAD = 176, 46, 44, 12, 8
+
+local function graphSvg(state: State): (string, number, number)
+	local byNum: { [number]: Ticket } = {}
+	for _, t in state.tickets do
+		byNum[t.n] = t
+	end
+	local depth: { [number]: number } = {}
+	local visiting: { [number]: boolean } = {}
+	local function depthOf(t: Ticket): number
+		if depth[t.n] then
+			return depth[t.n]
+		end
+		if visiting[t.n] then
+			return 0 -- cycle in Blocked by: draw it, don't loop
+		end
+		visiting[t.n] = true
+		local m = 0
+		for _, b in t.blockers do
+			local bt = byNum[b]
+			if bt and bt ~= t then
+				m = math.max(m, depthOf(bt) + 1)
+			end
+		end
+		visiting[t.n] = nil
+		depth[t.n] = m
+		return m
+	end
+	local cols: { { Ticket } } = {}
+	local pos: { [number]: { x: number, y: number } } = {}
+	for _, t in state.tickets do
+		local c = depthOf(t) + 1
+		while #cols < c do
+			table.insert(cols, {})
+		end
+		table.insert(cols[c], t)
+	end
+	local rows = 1
+	for c, list in cols do
+		rows = math.max(rows, #list)
+		for r, t in list do
+			pos[t.n] = { x = GRAPH_PAD + (c - 1) * (GRAPH_BW + GRAPH_GX), y = GRAPH_PAD + (r - 1) * (GRAPH_BH + GRAPH_GY) }
+		end
+	end
+	local w = GRAPH_PAD * 2 + math.max(1, #cols) * (GRAPH_BW + GRAPH_GX) - GRAPH_GX
+	local h = GRAPH_PAD * 2 + rows * (GRAPH_BH + GRAPH_GY) - GRAPH_GY
+	local out = {
+		string.format('<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d" font-family="Segoe UI, sans-serif">', w, h, w, h),
+		'<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8a909c"/></marker></defs>',
+	}
+	for _, t in state.tickets do
+		local to = pos[t.n]
+		for _, b in t.blockers do
+			local from = pos[b]
+			if from and b ~= t.n then
+				local x1, y1 = from.x + GRAPH_BW, from.y + GRAPH_BH / 2
+				local x2, y2 = to.x - 2, to.y + GRAPH_BH / 2
+				local mx = (x1 + x2) / 2
+				table.insert(out, string.format('<path d="M%d %d C%d %d %d %d %d %d" fill="none" stroke="#8a909c" stroke-width="1.5" marker-end="url(#a)"/>', x1, y1, mx, y1, mx, y2, x2, y2))
+			end
+		end
+	end
+	for _, t in state.tickets do
+		local at = pos[t.n]
+		local lk = look(state, t)
+		local sel = t.file == state.ticket
+		table.insert(out, string.format(
+			'<rect x="%d" y="%d" width="%d" height="%d" rx="%d" fill="%s" stroke="%s" stroke-width="%s"%s/>',
+			at.x, at.y, GRAPH_BW, GRAPH_BH, if t.kind then 22 else 6, lk.fill,
+			if sel then "#ffffff" else "#00000000", if sel then "2" else "0",
+			if lk.label == "bloccato" then ' stroke-dasharray="4 3" stroke-opacity="0.6"' else ""
+		))
+		local pad = if t.kind then 16 else 10
+		table.insert(out, string.format('<text x="%d" y="%d" font-size="13" fill="#f4f4f4" font-weight="600">%s</text>', at.x + pad, at.y + 19, xml(clip(t.num .. " · " .. (string.gsub(t.title, "^%d+%s*[:.%-]%s*", "")), 22))))
+		table.insert(out, string.format('<text x="%d" y="%d" font-size="11" fill="#e2e2e2">%s</text>', at.x + pad, at.y + 36, xml(clip(lk.label .. (if t.kind then " · " .. t.kind else ""), 26))))
+	end
+	table.insert(out, "</svg>")
+	return table.concat(out, "\n"), w, h
+end
+
+local blobs: { [string]: string } = {}
+local blobCount = 0
+
+local function blobOf(cx: BlockCx, svg: string): string
+	local id = blobs[svg]
+	if not id then
+		if blobCount > 32 then
+			blobs, blobCount = {}, 0
+		end
+		id = cx:blob(svg, "image/svg+xml")
+		blobs[svg] = id
+		blobCount += 1
+	end
+	return id
 end
 
 -- Agents (A2) and the repo setup state (B1).
@@ -964,6 +1262,9 @@ local function workflowView(state: State, p: any): Node
 	if f and f.map then
 		table.insert(open, ui.button("Apri mappa", { key = "map", size = "sm", icon = "folder-open", actions = { click = "openfile=map.md" } }))
 	end
+	if f and f.tickets > 0 then
+		table.insert(open, ui.button("Ticket (" .. f.tickets .. ")", { key = "tickets", size = "sm", variant = "primary", icon = "stack", actions = { click = "tickets" } }))
+	end
 	if not dir and #state.candidates > 1 then
 		table.insert(open, ui.button("Scegli cartella", { key = "pick", size = "sm", icon = "folder-open", actions = { click = "pickfolder" } }))
 	end
@@ -1043,6 +1344,120 @@ local function archiveView(state: State): Node
 		keyed(ui.row({ ui.button("Home", { key = "home", icon = "arrow-left", variant = "quiet", actions = { click = "home" } }) }), "bar"),
 		ui.card("Archivio", items, { key = "list", icon = "archive", meta = "le cartelle in .scratch/ restano finché non le elimini" }),
 	})
+end
+
+-- F2: graph + list on the left of the detail. Wayfinder tickets are decisions: no «Implementa».
+local STATUS_CHOICES = { "needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix" }
+
+local function ticketsView(state: State, p: any, cx: BlockCx): Node
+	local d = folderOf(state, p)
+	local bar = keyed(ui.row({
+		ui.button("Workflow", { key = "back", icon = "arrow-left", variant = "quiet", actions = { click = "open=" .. p.id } }),
+		ui.button("Aggiorna", { key = "refresh", icon = "refresh", variant = "quiet", actions = { click = "tickets" } }),
+	}), "bar")
+	if #state.tickets == 0 then
+		return ui.col({
+			bar,
+			ui.card("Ticket", { line("empty", { ui.span(if d then "Nessun ticket in .scratch/" .. d .. "/issues/: li scrive to-tickets o wayfinder." else "Il problema non ha ancora una cartella in .scratch/.", "muted") }) }, { key = "list", icon = "stack" }),
+		})
+	end
+	local svg, w, h = graphSvg(state)
+	local rows = {}
+	local spec = d ~= nil and tern.fs.exists(join(folderPath(state, d :: string), "spec.md"))
+	local hasWork = false
+	for _, t in state.tickets do
+		local lk = look(state, t)
+		hasWork = hasWork or (not t.kind and lk.label ~= "fatto")
+		table.insert(rows, {
+			id = t.file,
+			cells = {
+				{ ui.span(t.num, "mono muted") },
+				{ ui.span((string.gsub(t.title, "^%d+%s*[:.%-]%s*", ""))) },
+				{ badge = { text = lk.label, tone = lk.tone } },
+				{ ui.span(if t.total > 0 then t.done .. "/" .. t.total else "", "muted") },
+			},
+		})
+	end
+	local t = ticketByFile(state, state.ticket)
+	local detail: { Node } = {}
+	if t then
+		local lk = look(state, t)
+		local blocked = openBlockers(state, t)
+		local fact: { { Spans } } = {
+			{ "Stato", { ui.span(t.status or "—", "mono"), ui.span("  " .. lk.label, "muted") } },
+			{ "Bloccato da", if #t.blockers == 0 then "nessuno" else table.concat(t.blockers :: { any }, ", ") .. (if #blocked > 0 then " (aperti: " .. table.concat(blocked :: { any }, ", ") .. ")" else " (tutti chiusi)") },
+		}
+		if t.kind then
+			table.insert(fact, { "Tipo", "wayfinder · " .. t.kind })
+		end
+		if t.total > 0 then
+			table.insert(fact, { "Criteri", t.done .. "/" .. t.total .. " spuntati" })
+		end
+		table.insert(detail, ui.kv(fact))
+		local actions: { Node } = {
+			ui.button("Modifica", { key = "edit", size = "sm", icon = "pen", title = "Apre il file nell'editor di Tern", actions = { click = "ticketopen" } }),
+		}
+		if not t.kind then
+			table.insert(actions, ui.el("label", { key = "done", class = "awm-done" }, {
+				ui.el("input", { key = "c", type = "checkbox", name = "ticketdone", value = t.file, checked = lk.label == "fatto" }),
+				ui.text({ ui.span(" fatto", "strong") }),
+			}))
+			table.insert(actions, ui.button("Implementa", {
+				key = "impl",
+				size = "sm",
+				icon = "copy",
+				variant = if #blocked == 0 and lk.label ~= "fatto" then "primary" else "default",
+				title = "/skill:implement " .. t.num,
+				actions = { click = "implement" },
+			}))
+		end
+		table.insert(detail, keyed(ui.row(actions), "act"))
+		if not t.kind then
+			local labels = triageLabels(state)
+			local st: { Node } = { ui.text({ ui.span("Stato:", "muted") }) }
+			for _, role in STATUS_CHOICES do
+				-- to-tickets writes ready-for-agent/ready-for-human; needs-triage and needs-info are for incoming issues.
+				if role ~= "needs-triage" and role ~= "needs-info" then
+					table.insert(st, ui.button(labels[role], { key = role, size = "sm", variant = "quiet", disabled = t.status == labels[role], actions = { click = "setstatus=" .. labels[role] } }))
+				end
+			end
+			table.insert(detail, keyed(ui.row(st), "status"))
+		end
+		if lk.label == "fatto" and t.done < t.total then
+			table.insert(detail, line("crit", { ui.span("⚠ Criteri non spuntati: " .. (t.total - t.done) .. ". Matt: chiudi il ticket e spunta i criteri (Modifica).", "warning") }))
+		end
+		if #blocked > 0 and not t.kind then
+			table.insert(detail, line("warnb", { ui.span("⚠ Bloccato: prima chiudi " .. table.concat(blocked :: { any }, ", ") .. ".", "warning") }))
+		end
+		if t.kind then
+			table.insert(detail, line("way", { ui.span("Ticket di wayfinder: è una decisione, non lavoro da implementare. Lo chiude wayfinder.", "muted") }))
+		end
+		table.insert(detail, ui.md((string.gsub(t.text, "^#[^\r\n]*\r?\n", ""))))
+	end
+	local top: { Node } = { bar }
+	if spec and hasWork then
+		table.insert(top, keyed(ui.row({
+			ui.button("Implementa tutta la spec", { key = "spec", size = "sm", icon = "copy", title = "/skill:implement-spec", actions = { click = "implementspec" } }),
+			ui.text({ ui.span("subagent in parallelo sui ticket pronti", "muted") }),
+		}), "specrow"))
+	end
+	local legend = "riquadro = to-tickets · ovale = wayfinder · tratteggio = bloccato · freccia = «Blocked by»"
+	table.insert(top, ui.card("Grafo", {
+		ui.node("image", { key = "graph", blob = blobOf(cx, svg), alt = "Grafo dei ticket", w = w, h = h }),
+		line("legend", { ui.span(legend, "muted") }),
+	}, { key = "graph", icon = "stack", meta = ".scratch/" .. tostring(d) .. "/issues/", collapsible = true }))
+	table.insert(top, ui.card("Ticket", {
+		ui.table({
+			{ id = "n", head = "#" },
+			{ id = "t", head = "Titolo", grow = 1 },
+			{ id = "s", head = "Stato" },
+			{ id = "c", head = "", align = "end", priority = -1 },
+		}, rows, { selectable = true, selected = state.ticket }),
+	}, { key = "list", icon = "stack", meta = #state.tickets .. "" }))
+	if t then
+		table.insert(top, ui.card(t.title, detail, { key = "detail", icon = "info", meta = t.file }))
+	end
+	return ui.col(top)
 end
 
 -- Mutations.
@@ -1227,6 +1642,8 @@ local board: BlockDef<State> = {
 			form = nil,
 			confirm = nil,
 			candidates = {},
+			tickets = {},
+			ticket = nil,
 			flows = {},
 			flowsSource = "",
 			all = {},
@@ -1245,13 +1662,15 @@ local board: BlockDef<State> = {
 		return if p then "AI · " .. p.title else "AI Workflows"
 	end,
 	font = "sans",
-	view = function(state, _cx)
+	view = function(state, cx)
 		local p = find(state, state.current)
 		local main: Node
 		if state.screen == "situation" and p then
 			main = situationView(state, p)
 		elseif state.screen == "workflow" and p then
 			main = workflowView(state, p)
+		elseif state.screen == "tickets" and p then
+			main = ticketsView(state, p, cx)
 		elseif state.screen == "archive" then
 			main = archiveView(state)
 		else
@@ -1308,11 +1727,26 @@ local board: BlockDef<State> = {
 			end
 			return
 		end
+		if ev.ev == "change" and ev.name == "ticketdone" then
+			local p = find(state, state.current)
+			local d = p and folderOf(state, p)
+			if d then
+				local value = if ev.checked then "done" else triageLabels(state)["ready-for-agent"]
+				local ok, err = writeStatus(join(issuesDir(state, d), tostring(ev.value)), value)
+				if not ok then
+					cx:toast("error", "Stato non salvato", tostring(err))
+				end
+				loadTickets(state, p)
+			end
+			return
+		end
 		if ev.ev == "select" then
 			if state.screen == "situation" then
 				chooseSituation(state, tostring(ev.item))
 			elseif state.screen == "home" then
 				openProblem(state, tostring(ev.item))
+			elseif state.screen == "tickets" then
+				state.ticket = tostring(ev.item)
 			end
 			return
 		end
@@ -1353,6 +1787,34 @@ local board: BlockDef<State> = {
 			saveForm(state, cx)
 		elseif act == "open" then
 			openProblem(state, tostring(value or ev.item))
+		elseif act == "tickets" and p then
+			loadTickets(state, p)
+			state.screen = "tickets"
+		elseif act == "ticketopen" and p then
+			local d = folderOf(state, p)
+			if d and state.ticket then
+				cx:open(join(issuesDir(state, d), state.ticket :: string))
+			end
+		elseif act == "implement" and p then
+			local t = ticketByFile(state, state.ticket)
+			if t then
+				copyText(cx, "/skill:implement " .. t.num, p.session, ev.window)
+				local blocked = openBlockers(state, t)
+				if #blocked > 0 then
+					cx:toast("warning", "Ticket bloccato", "Prima vanno chiusi: " .. table.concat(blocked :: { any }, ", "))
+				end
+			end
+		elseif act == "implementspec" and p then
+			copyText(cx, "/skill:implement-spec", p.session, ev.window)
+		elseif act == "setstatus" and p then
+			local d = folderOf(state, p)
+			if d and state.ticket then
+				local ok, err = writeStatus(join(issuesDir(state, d), state.ticket :: string), tostring(value))
+				if not ok then
+					cx:toast("error", "Stato non salvato", tostring(err))
+				end
+				loadTickets(state, p)
+			end
 		elseif act == "openfile" and p then
 			local d = folderOf(state, p)
 			if d then

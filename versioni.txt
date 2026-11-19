@@ -1,3 +1,8 @@
+0.7.0 - [18/11/2026]
+    - Nuova schermata «Ticket» (pulsante nel workflow quando la cartella ha ticket): grafo con un riquadro per ticket, frecce da «Blocked by» e colori da «Status», elenco e dettaglio del ticket (file: host.luau)
+    - Dal dettaglio: Modifica apre il file, la casella «fatto» scrive Status: done (tolta, torna ready-for-agent), i pulsanti di stato usano le etichette di docs/agents/triage-labels.md, Implementa copia /skill:implement NN e avvisa se il ticket è bloccato
+    - I ticket di wayfinder (riga Type:) hanno forma ovale e nessun Implementa: sono decisioni; con una spec, «Implementa tutta la spec» copia /skill:implement-spec
+
 0.6.2 - [18/11/2026]
     - Conferma di eliminazione più chiara: «La cancellazione è irreversibile», e con una cartella «i file tornano solo da un commit git»; tolta la riga vuota (file: host.luau)
 
